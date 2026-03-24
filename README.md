@@ -89,7 +89,7 @@ ServerComponent\Deploys\Update\Name : Sysmon
 A operação foi concluída com êxito.
 
 # Check Service Registration
-sc query sysmon
+> sc query sysmon
 NOME_DO_SERVIÇO: sysmon
     TIPO                       : 10  WIN32_OWN_PROCESS
     ESTADO                     : 4  RUNNING
@@ -100,11 +100,11 @@ NOME_DO_SERVIÇO: sysmon
     AGUARDAR_DICA              : 0x0
 
 # Verify Driver Attachment (Kernel Minifilter)
-fltmc filters | findstr "Sysmon"
+> fltmc filters | findstr "Sysmon"
 SysmonDrv                               7       385201         0
 
 # Display Applied XML Configuration
-"C:\Windows\System32\Sysmon.exe" -c
+> "C:\Windows\System32\Sysmon.exe" -c
 Current configuration:
  - Service name:                  Sysmon
  - Driver name:                   SysmonDrv
@@ -118,131 +118,8 @@ Current configuration:
  - CRL checking:                  disabled
  - DNS lookup:                    enabled
 
-Rule configuration (version 4.91):
- - ProcessCreate                      onmatch: include   combine rules using 'Or'
-        ParentImage                    filter: image        value: 'sethc.exe'
-        ParentImage                    filter: image        value: 'utilman.exe'
-        ParentImage                    filter: image        value: 'osk.exe'
-        ParentImage                    filter: image        value: 'eventvwr.exe'
-        ParentImage                    filter: image        value: 'fodhelper.exe'
-        OriginalFileName               filter: contains     value: 'procdump'
-        OriginalFileName               filter: is           value: 'TTTracer.exe'
-        OriginalFileName               filter: is           value: 'sqldumper.exe'
-        ParentImage                    filter: is           value: 'diskshadow.exe'
-        OriginalFileName               filter: image        value: 'powershell.exe'
-        OriginalFileName               filter: image        value: 'pwsh.exe'
-        OriginalFileName               filter: is           value: 'cmd.exe'
-        OriginalFileName               filter: is           value: 'wmic.exe'
-        ParentImage                    filter: image        value: 'wmiprvse.exe'
-        OriginalFileName               filter: is           value: 'schtasks.exe'
-        OriginalFileName               filter: is           value: 'at.exe'
-        OriginalFileName               filter: image        value: 'tasklist.exe'
-        OriginalFileName               filter: image        value: 'qprocess.exe'
-        OriginalFileName               filter: is           value: 'certutil.exe'
-        OriginalFileName               filter: is           value: 'bitsadmin.exe'
-        OriginalFileName               filter: is           value: 'curl.exe'
-        OriginalFileName               filter: is           value: 'mshta.exe'
-        OriginalFileName               filter: is           value: 'regsvr32.exe'
-        OriginalFileName               filter: contains     value: 'rundll32.exe'
-        OriginalFileName               filter: is           value: 'msiexec.exe'
-        OriginalFileName               filter: is           value: 'vssadmin.exe'
-        OriginalFileName               filter: is           value: 'wbadmin.exe'
-        OriginalFileName               filter: is           value: 'bcdedit.exe'
-        Image                          filter: begin with   value: 'C:\Temp\'
-        Image                          filter: begin with   value: 'C:\Users\Public\'
-        Image                          filter: begin with   value: 'C:\ProgramData\'
-        ParentImage                    filter: image        value: 'winword.exe'
-        ParentImage                    filter: image        value: 'excel.exe'
-        ParentImage                    filter: image        value: 'powerpnt.exe'
-        OriginalFileName               filter: contains     value: 'PsExec'
- - ProcessCreate                      onmatch: exclude   combine rules using 'Or'
-        Image                          filter: is           value: 'C:\Windows\System32\svchost.exe'
-        Image                          filter: is           value: 'C:\Windows\System32\conhost.exe'
-        Image                          filter: begin with   value: 'C:\Program Files\Windows Defender\'
- - FileCreateTime                     onmatch: include   combine rules using 'Or'
-        TargetFilename                 filter: end with     value: '.exe'
-        Image                          filter: begin with   value: 'C:\Temp'
- - NetworkConnect                     onmatch: include   combine rules using 'Or'
-        Image                          filter: image        value: 'powershell.exe'
-        Image                          filter: image        value: 'cmd.exe'
-        Image                          filter: image        value: 'mshta.exe'
-        Image                          filter: image        value: 'regsvr32.exe'
-        Image                          filter: image        value: 'rundll32.exe'
-        DestinationPort                filter: is           value: '4444'
-        DestinationPort                filter: is           value: '31337'
-        DestinationPort                filter: is           value: '3389'
-        DestinationPort                filter: is           value: '22'
- - NetworkConnect                     onmatch: exclude   combine rules using 'Or'
-        Image                          filter: is           value: 'C:\Windows\System32\svchost.exe'
-        DestinationHostname            filter: end with     value: '.microsoft.com'
- - ProcessTerminate                   onmatch: include   combine rules using 'Or'
-        Image                          filter: begin with   value: 'C:\Users'
-        Image                          filter: begin with   value: 'C:\Temp'
- - DriverLoad                         onmatch: exclude   combine rules using 'Or'
-        Compound Rule 0001   combine using And
-            Signature                      filter: contains     value: 'Microsoft'
-            SignatureStatus                filter: is           value: 'Valid'
- - ImageLoad                          onmatch: include   combine rules using 'Or'
-        ImageLoaded                    filter: contains     value: 'vaultcli.dll'
-        ImageLoaded                    filter: contains     value: 'samlib.dll'
- - CreateRemoteThread                 onmatch: include   combine rules using 'Or'
-        TargetImage                    filter: end with     value: '.exe'
- - CreateRemoteThread                 onmatch: exclude   combine rules using 'Or'
-        SourceImage                    filter: is           value: 'C:\Windows\System32\svchost.exe'
- - RawAccessRead                      onmatch: include   combine rules using 'Or'
-        Device                         filter: begin with   value: '\\.\'
- - ProcessAccess                      onmatch: include   combine rules using 'Or'
-        TargetImage                    filter: image        value: 'lsass.exe'
- - ProcessAccess                      onmatch: exclude   combine rules using 'Or'
-        SourceImage                    filter: is           value: 'C:\Windows\System32\svchost.exe'
-        SourceImage                    filter: end with     value: 'Windows Defender\MsMpEng.exe'
- - FileCreate                         onmatch: include   combine rules using 'Or'
-        TargetFilename                 filter: contains     value: '\Startup\'
-        TargetFilename                 filter: begin with   value: 'C:\Windows\System32\Tasks\'
-        TargetFilename                 filter: begin with   value: 'C:\Windows\Temp\'
-        TargetFilename                 filter: begin with   value: 'C:\Users\Public\'
-        TargetFilename                 filter: end with     value: '.ps1'
-        TargetFilename                 filter: end with     value: '.vbs'
-        TargetFilename                 filter: end with     value: '.bat'
- - RegistryEvent                      onmatch: include   combine rules using 'Or'
-        TargetObject                   filter: contains     value: '\CurrentVersion\Run'
-        TargetObject                   filter: contains     value: '\CurrentControlSet\Services\'
-        TargetObject                   filter: contains     value: '\Windows Defender\'
- - FileCreateStreamHash               onmatch: include   combine rules using 'Or'
-        TargetFilename                 filter: contains     value: ':'
- - FileCreateStreamHash               onmatch: exclude   combine rules using 'Or'
-        TargetFilename                 filter: end with     value: ':Zone.Identifier'
- - PipeEvent                          onmatch: include   combine rules using 'Or'
-        PipeName                       filter: contains     value: 'msagent_'
-        PipeName                       filter: contains     value: 'MSSE-'
-        PipeName                       filter: is           value: 'psexec'
- - WmiEvent                           onmatch: include   combine rules using 'Or'
-        Operation                      filter: is           value: 'Created'
- - DnsQuery                           onmatch: include   combine rules using 'Or'
-        QueryName                      filter: end with     value: '.tk'
-        QueryName                      filter: end with     value: '.ml'
-        QueryName                      filter: end with     value: '.ga'
-        Image                          filter: image        value: 'powershell.exe'
-        Image                          filter: image        value: 'cmd.exe'
- - DnsQuery                           onmatch: exclude   combine rules using 'Or'
-        QueryName                      filter: end with     value: 'microsoft.com'
-        QueryName                      filter: end with     value: 'windows.com'
-        Image                          filter: is           value: 'C:\Windows\System32\svchost.exe'
- - FileDelete                         onmatch: include   combine rules using 'Or'
-        TargetFilename                 filter: end with     value: '.exe'
-        TargetFilename                 filter: end with     value: '.dll'
-        TargetFilename                 filter: end with     value: '.ps1'
- - ClipboardChange                    onmatch: exclude   combine rules using 'Or'
-        Image                          filter: end with     value: 'chrome.exe'
-        Image                          filter: image        value: 'WINWORD.EXE'
-        Image                          filter: image        value: 'EXCEL.EXE'
- - ProcessTampering                   onmatch: include   combine rules using 'Or'
-        Image                          filter: end with     value: '.exe'
- - FileDeleteDetected                 onmatch: include   combine rules using 'Or'
-        TargetFilename                 filter: end with     value: '.exe'
- - FileExecutableDetected             onmatch: include   combine rules using 'Or'
-        TargetFilename                 filter: contains     value: '\Downloads\'
-        TargetFilename                 filter: begin with   value: 'C:\Users\Public\'
+Rule configuration (version 4.91)
+..
 Sysmon is running.
 
 ```
@@ -280,6 +157,21 @@ Event Viewer: Confirm log ingestion at: ```Applications and Services Logs > Micr
 * **Deployment**: Utilize native provisioning methods (DISM/PowerShell) as detailed in the Technical Guide.
 * **Rule Alignment**: Synchronize your ```/var/ossec/etc/rules/``` with the custom rulesets provided in this repo to eliminate telemetry blind spots.
 
+---
+
+## [Automated Health Audit](https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/scripts/Check-SysmonHealth.ps1) (Recommended)
+
+For deep and automated telemetry validation, use the senior diagnostic script included in this repository. It performs an 8-layer scan, ranging from binary integrity to real-time event sampling.
+
+### Script Preview:
+![Sysmon Check Preview](https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon_check.png?raw=true)
+
+### How to run:
+1. Navigate to the [`/scripts`](https://github.com/mym0us3r/Unified-Sysmon-Configs/tree/main/scripts) folder.
+2. Run PowerShell as **Administrator**.
+3. Run the command below to view the full diagnostic and generate an optional report on your Desktop:
+```powershell
+.\Check-SysmonHealth.ps1 -EventSampleCount 15 -ExportReport
 
 Acknowledgments & Credits
 
