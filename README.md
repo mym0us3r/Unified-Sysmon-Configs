@@ -2,10 +2,14 @@
 
 **Enterprise-grade telemetry orchestration for Windows (Native & Legacy). Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat hunting.**
 
-![License](https://img.shields.io/badge/license-GPLv3-blue.svg)
+![license](https://img.shields.io/badge/license-GPLv3-blue.svg)
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207+-blue)
-![Platform](https://img.shields.io/badge/platform-Windows%2011%20%7C%20Server%202025-lightgrey)
-![Wazuh](https://img.shields.io/badge/ecosystem-Wazuh%20Ambassador-orange)
+![platform](https://img.shields.io/badge/platform-Windows%2011%20%7C%20Server%202025-lightgrey)
+![ecosystem](https://img.shields.io/badge/ecosystem-Wazuh-orange)
+![tool](https://img.shields.io/badge/tool-Sysmon-red)
+![focus](https://img.shields.io/badge/focus-Threat%20Hunting-brightgreen)
+![domain](https://img.shields.io/badge/domain-CSIRT-darkblue)
+
 ---
 
 ## 💡 Strategic Overview
@@ -39,105 +43,72 @@ This project includes a specialized technical guide to assist SOC/CSIRT teams in
 
 Verify the Sysmon Native state using these multi-layer validation methods to ensure telemetry integrity.
 
-### A. PowerShell Method (Automation & Audit)
-Ideal for remote execution and fleet-wide health auditing:
-```powershell
-# Check feature availability and status
-> Get-WindowsOptionalFeature -Online -FeatureName "Sysmon"
+### PowerShell Method (Automation & Audit)
+* **PowerShell: Check feature availability and status** - Ideal for remote execution and fleet-wide health auditing:
+  
+``` > Get-WindowsOptionalFeature -Online -FeatureName "Sysmon"``` 
 
-FeatureName      : Sysmon
-DisplayName      : Sysmon
-Description      : Enables the Sysmon tool that monitors and logs specified system activity to the Windows event log
-RestartRequired  : Possible
-State            : Enabled
-CustomProperties :
-                   ServerComponent\Description : Enables the Sysmon tool that monitors and logs specified system activity to the
-                   Windows event log
-                   ServerComponent\DisplayName : Sysmon
-                   ServerComponent\Id : 1337
-                   ServerComponent\Type : Feature
-                   ServerComponent\UniqueName : Sysmon
-                   ServerComponent\Deploys\Update\Name : Sysmon```
+* **Rapid "Active/Inactive" check**
 
-# Rapid "Active/Inactive" check
-$sysmonFeature = Get-WindowsOptionalFeature -Online -FeatureName "Sysmon" -ErrorAction SilentlyContinue
-if($sysmonFeature.State -eq "Enabled") { 
-    Write-Host "Sysmon Native is ACTIVE" -ForegroundColor Green 
-} else { 
-    Write-Host "Sysmon Native is DISABLED" -ForegroundColor Red 
-}
+` > $sysmonFeature = Get-WindowsOptionalFeature -Online -FeatureName "Sysmon" -ErrorAction SilentlyContinue
+if($sysmonFeature.State -eq "Enabled") {
+     Write-Host "Sysmon Native is ACTIVE" -ForegroundColor Green
+} else {
+     Write-Host "Sysmon Native is DISABLED" -ForegroundColor Red
+}`
 
-```
+---
 
-### B. Command Line (CLI) & Kernel Validation
-Essential for verifying driver attachment to the storage stack and service registration:
-```DOS
-# Check Feature Status via DISM
-Dism /Online /Get-FeatureInfo /FeatureName:Sysmon
-Ferramenta de Gerenciamento e Manutenção de Imagens de Implantação
-Versão: 10.0.26100.5074
-Versão da Imagem: 10.0.26200.8039
-Informações do recurso:
-Nome do recurso : Sysmon
-Nome para Exibição : Sysmon
-Descrição : Enables the Sysmon tool that monitors and logs specified system activity to the Windows event log
-Reinicialização Necessária : Possible
-Estado : Habilitado
-Propriedades Personalizadas:
-ServerComponent\Description : Enables the Sysmon tool that monitors and logs specified system activity to the Windows event log
-ServerComponent\DisplayName : Sysmon
-ServerComponent\Id : 1337
-ServerComponent\Type : Feature
-ServerComponent\UniqueName : Sysmon
-ServerComponent\Deploys\Update\Name : Sysmon
-A operação foi concluída com êxito.
+* **DOS: Check Feature Status via DISM** - Essential for verifying driver attachment to the storage stack and service registration:
 
-# Check Service Registration
-> sc query sysmon
-NOME_DO_SERVIÇO: sysmon
+``` > Dism /Online /Get-FeatureInfo /FeatureName:Sysmon```
+
+* **Check Service Registration**
+
+``` > sc query sysmon```
+
+> NOME_DO_SERVIÇO: sysmon
     TIPO                       : 10  WIN32_OWN_PROCESS
     ESTADO                     : 4  RUNNING
                                 (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
     CÓDIGO_DE_SAÍDA_DO_WIN32   : 0  (0x0)
     CÓDIGO_DE_SAÍDA_DO_SERVIÇO : 0  (0x0)
     PONTO_DE_VERIFICAÇÃO       : 0x0
-    AGUARDAR_DICA              : 0x0
+    AGUARDAR_DICA              : 0x0*
 
-# Verify Driver Attachment (Kernel Minifilter)
-> fltmc filters | findstr "Sysmon"
+* **Verify Driver Attachment (Kernel Minifilter)**
+``` > fltmc filters | findstr "Sysmon" ```
+
 SysmonDrv                               7       385201         0
 
-# Display Applied XML Configuration
-> "C:\Windows\System32\Sysmon.exe" -c
+* **Display Applied XML Configuration**
+``` > "C:\Windows\System32\Sysmon.exe" -c```
+
 Current configuration:
  - Service name:                  Sysmon
  - Driver name:                   SysmonDrv
  - Config file:                   C:\Windows\System32\Sysmon\config.xml
  - Config hash:                   SHA256=6F5C1404DC97F2CFC72E17CCB5849C339B4AAD2D77FE36D123709219423B3E66
-
  - HashingAlgorithms:             MD5,SHA256,IMPHASH
  - Network connection:            enabled
  - Archive Directory:             \Sysmon\
  - Image loading:                 enabled
  - CRL checking:                  disabled
  - DNS lookup:                    enabled
-
 Rule configuration (version 4.91)
-..
 Sysmon is running.
 
-```
-
-### C. Graphical User Interface (GUI)
+* **C. Graphical User Interface (GUI)**
 Manual verification steps for localized troubleshooting:
-Optional Features: 
+Optional Features:
+
 ```Open Settings > System > Optional Features``` and ensure Sysmon is present in the "Installed features" list.
 
 ```Services: Open services.msc``` and verify the Sysmon service is "Running" and set to "Automatic".
 
-Event Viewer: Confirm log ingestion at: ```Applications and Services Logs > Microsoft > Windows > Sysmon > Operational```.
+* **Event Viewer & Validation:** Confirm log ingestion at:
 
-3. **Event Viewer & Validation:** Confirm log ingestion at: `Applications and Services Logs > Microsoft > Windows > Sysmon > Operational`.
+```Applications and Services Logs > Microsoft > Windows > Sysmon > Operational.``` 
 
 <p align="center">
   <img src="https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon_gui_check.png?raw=true" alt="Sysmon GUI Verification Print" width="1024px" style="border: 1px solid #eee;">
@@ -153,8 +124,8 @@ Event Viewer: Confirm log ingestion at: ```Applications and Services Logs > Micr
 /configs/legacy: Hardened, reliable baselines for traditional sysmon.exe (Sysinternals) deployments.
 
 # Detection Logic (Wazuh Ruleset)
-* **/ruleset/wazuh-server-4.14**: Production-verified rules extracted from a live Wazuh environment.
-* **/ruleset/wazuh-official-repo**: Alignment with the latest official Wazuh security content.
+* **ruleset/rules/wazuh-server-4.14**: Production-verified rules extracted from a live Wazuh environment.
+* **ruleset/rules/wazuh-official-repo**: Alignment with the latest official Wazuh security content.
 
 # Operational Workflow
 * **Select Baseline**: Choose the configuration from /configs based on your Windows version (Native vs. Legacy).
@@ -196,12 +167,17 @@ Below is a real-world preview of **Microsoft-Windows-Sysmon** (Native) event ing
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
 
-* **[Wazuh Team](https://wazuh.com/blog/using-wazuh-to-monitor-sysmon-events/)** – For providing the premier open-source XDR engine and continuous support to the Ambassador program.
+* **[Wazuh Team](https://wazuh.com/)** – For providing the premier open-source SIEM/XDR engine and continuous support to the community :)
 * **[Microsoft Learn - Sysmon](https://learn.microsoft.com/en-us/sysinternals/downloads/sysinternals-suite)** – Official home of the Sysinternals suite.
 * **[Enable Sysmon Guide](https://learn.microsoft.com/pt-br/windows/security/operating-system-security/sysmon/how-to-enable-sysmon)** – Official Microsoft guide on enabling Sysmon as a native resource.
 * **[Native Sysmon Functionality](https://techcommunity.microsoft.com/blog/windows-itpro-blog/native-sysmon-functionality-coming-to-windows/4468112)** – Microsoft Tech Community announcement.
 * **[Microsoft Update Catalog (KB5077241)](https://www.catalog.update.microsoft.com/Search.aspx?q=KB5077241)** – Official update link for Sysmon Native integration.
 * **[Olaf Hartong](https://github.com/olafhartong/sysmon-modular)** – Author of *Sysmon-Modular*. A key reference for structured Sysmon configurations and advanced hunting logic.
 * **[SwiftOnSecurity](https://github.com/SwiftOnSecurity)** – For the legendary *sysmon-config*, which pioneered the baseline for endpoint visibility.
+
+--- 
+
+### GOD, my dog Zeus and I. 
+*For the strength, the guard, and the code* :) 
 
 ---
