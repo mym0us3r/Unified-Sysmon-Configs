@@ -179,6 +179,19 @@ For deep and automated telemetry validation, use the senior diagnostic script in
 ```
 ---
 
+## 📊 Wazuh Discover: Native Sysmon Integration
+
+Below is a real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion. The telemetry is successfully captured, decoded, and indexed by the Wazuh Manager, providing high-fidelity visibility into PowerShell processes and file system activities.
+
+![Wazuh Native Sysmon Events](https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon_wazuh.png?raw=true)
+
+### 🔍 Integration Highlights:
+* **Provider**: `Microsoft-Windows-Sysmon` (Official Windows Component).
+* **Decoded Data**: Full visibility into `data.win.eventdata.targetFilename` and `data.win.eventdata.image`.
+* **Security Context**: Automated detection of executable file drops and PowerShell script execution in real-time.
+
+---
+
 ### Community - Acknowledgments & Credits:
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
