@@ -9,6 +9,10 @@ Endpoint visibility is the cornerstone of modern Detection Engineering. With the
 
 This repository serves as a centralized hub for production-ready configurations, bridging the gap between legacy Sysinternals deployments and the new native integration.
 
+![License](https://img.shields.io/badge/license-GPLv3-blue.svg)
+![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207+-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%2011%20%7C%20Server%202025-lightgrey)
+![Wazuh](https://img.shields.io/badge/ecosystem-Wazuh%20Ambassador-orange)
 ---
 
 ## 📘 Featured Documentation: Sysmon as a Native Resource
