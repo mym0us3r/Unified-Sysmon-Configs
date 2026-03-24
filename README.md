@@ -172,8 +172,10 @@ For deep and automated telemetry validation, use the senior diagnostic script in
 3. Run the command below to view the full diagnostic and generate an optional report on your Desktop:
 ```powershell
 .\Check-SysmonHealth.ps1 -EventSampleCount 15 -ExportReport
+```
+---
 
-Acknowledgments & Credits
+### Community - Acknowledgments & Credits:
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
 
