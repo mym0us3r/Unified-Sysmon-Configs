@@ -58,6 +58,12 @@ The Issue: High noise floor, low intelligence, and constant false positives from
 
 The Gain: Massive noise reduction, focus on malicious intent/obfuscation, and precise MITRE ATT&CK (T1059) mapping.
 
+<p align="center">
+  <img src="https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon_sensor_arch.jpg?raw=true" alt="Sysmon GUI Verification Print" width="1024px" style="border: 1px solid #eee;">
+  <br>
+  <b>Sensor:</b> Legacy vs Native Sensor
+</p>
+
 # What Changes in Practice?
 * Structured Events: Sysmon Native preserves event integrity and structure from kernel to agent.
 * Higher Fidelity: Command-line arguments, parent-child relationships, and process context are significantly more reliable.
@@ -172,7 +178,7 @@ Optional Features:
 <p align="center">
   <img src="https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon_gui_check.png?raw=true" alt="Sysmon GUI Verification Print" width="1024px" style="border: 1px solid #eee;">
   <br>
-  <b>Figure 1:</b> Manual verification of Sysmon Native feature via Optional Features GUI and successful Event Viewer log ingestion.
+  <b>Windows Check:</b> Manual verification of Sysmon Native feature via Optional Features GUI and successful Event Viewer log ingestion.
 </p>
 
 ### Repository Architecture 
