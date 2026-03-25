@@ -32,7 +32,7 @@ Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat huntin
 
 Endpoint visibility is the cornerstone of modern Detection Engineering. With the release of **Windows 11 (24H2+)**, Sysmon has transitioned into a **Native OS Feature**, fundamentally changing how security teams manage lifecycle, updates, and driver stability.
 
-This repository serves as a centralized hub for production-ready configurations, bridging the gap between legacy Sysinternals deployments and the new native integration — with full MITRE ATT&CK alignment and Wazuh ruleset coverage.
+This repository serves as a centralized hub for production-ready configurations, bridging the gap between legacy Sysinternals deployments and the new native integration with full MITRE ATT&CK alignment and Wazuh ruleset coverage.
 
 Legacy Sysmon configurations were traditionally designed around a **"collect-first, filter-later"** model. This often resulted in:
 
@@ -69,10 +69,10 @@ Legacy Sysmon configurations were traditionally designed around a **"collect-fir
 
 **What changes in practice:**
 
-- **Structured Events** — Sysmon Native preserves event integrity and structure from kernel to agent
-- **Higher Fidelity** — Command-line arguments, parent-child relationships, and process context are significantly more reliable
-- **Reduced Noise** — Advanced exclusions silence benign system activity before it leaves the host
-- **Behavioral Detection** — Shifts the focus from static IOCs (hashes/IPs) to dynamic TTPs
+- **Structured Events** - Sysmon Native preserves event integrity and structure from kernel to agent
+- **Higher Fidelity** - Command-line arguments, parent-child relationships, and process context are significantly more reliable
+- **Reduced Noise** - Advanced exclusions silence benign system activity before it leaves the host
+- **Behavioral Detection** - Shifts the focus from static IOCs (hashes/IPs) to dynamic TTPs
 
 ---
 
@@ -91,16 +91,16 @@ Instead of merely flagging tools, this configuration focuses on identifying **in
 
 **Operational benefits:**
 
-- **Lower Ingestion Costs** — Drastic reduction in data volume sent to the SIEM/Wazuh
-- **Higher Signal-to-Noise Ratio** — Analysts spend time on threats, not logs
-- **Enhanced Threat Hunting** — Cleaner data allows for more complex correlation and pivoting
-- **MITRE ATT&CK Alignment** — Direct visibility into the adversary playbook
+- **Lower Ingestion Costs** - Drastic reduction in data volume sent to the SIEM/Wazuh
+- **Higher Signal-to-Noise Ratio** - Analysts spend time on threats, not logs
+- **Enhanced Threat Hunting** - Cleaner data allows for more complex correlation and pivoting
+- **MITRE ATT&CK Alignment** - Direct visibility into the adversary playbook
 
 ---
 
 ## 🔬 Practical Example: Process Creation (EID 1)
 
-> **Scenario:** Detecting PowerShell abuse with obfuscation flags — T1059.001
+> **Scenario:** Detecting PowerShell abuse with obfuscation flags - T1059.001
 
 ### Legacy approach (broad, high noise)
 
@@ -207,10 +207,10 @@ systemctl restart wazuh-manager
 
 Key insights from the guide:
 
-- **Native Lifecycle Management** — Leveraging KB5077241 for automated updates via Windows Update
-- **Enterprise Scalability** — Deployment strategies using DISM and PowerShell for fleet-wide provisioning
-- **High-ROI Telemetry** — A curated Top 10 list of critical events for maximum visibility
-- **Operational Health Checks** — Procedures for Schema validation and configuration auditing
+- **Native Lifecycle Management** - Leveraging KB5077241 for automated updates via Windows Update
+- **Enterprise Scalability** - Deployment strategies using DISM and PowerShell for fleet-wide provisioning
+- **High-ROI Telemetry** - A curated Top 10 list of critical events for maximum visibility
+- **Operational Health Checks** - Procedures for Schema validation and configuration auditing
 
 ---
 
@@ -290,7 +290,7 @@ eventvwr.msc → Applications and Services Logs → Microsoft → Windows → Sy
 
 ## 🩺 Automated Health Audit (Recommended)
 
-For deep and automated telemetry validation, use the senior diagnostic script included in `/scripts`. It performs an **8-layer scan** — from binary integrity and digital signature verification to real-time event sampling and registry validation.
+For deep and automated telemetry validation, use the senior diagnostic script included in `/scripts`. It performs an **8-layer scan** - from binary integrity and digital signature verification to real-time event sampling and registry validation.
 
 <p align="center">
   <a href="https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/scripts/Check-SysmonHealth.ps1">
@@ -326,7 +326,7 @@ powershell.exe -ExecutionPolicy Bypass -File ".\Check-SysmonHealth.ps1" -ExportR
 
 ## 📊 Wazuh Discover: Native Sysmon Integration
 
-Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion — telemetry captured, decoded, and indexed by the Wazuh Manager.
+Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion - telemetry captured, decoded, and indexed by the Wazuh Manager.
 
 <p align="center">
   <img src="https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon_wazuh.png?raw=true" alt="Wazuh Native Sysmon Events" width="1024px">
@@ -345,14 +345,14 @@ Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion — 
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
 
-- **[Wazuh Team](https://wazuh.com/)** — Premier open-source SIEM/XDR engine and continuous community support
-- **[Microsoft Learn — Enable Sysmon](https://learn.microsoft.com/pt-br/windows/security/operating-system-security/sysmon/how-to-enable-sysmon)** — Official guide for native Sysmon enablement
-- **[Native Sysmon Announcement](https://techcommunity.microsoft.com/blog/windows-itpro-blog/native-sysmon-functionality-coming-to-windows/4468112)** — Microsoft Tech Community (Mark Russinovich)
-- **[KB5077241](https://www.catalog.update.microsoft.com/Search.aspx?q=KB5077241)** — Official update catalog entry for Sysmon Native integration
-- **[Olaf Hartong](https://github.com/olafhartong/sysmon-modular)** — Author of *Sysmon-Modular*, key reference for structured configurations and MITRE ATT&CK mapping
-- **[SwiftOnSecurity](https://github.com/SwiftOnSecurity/sysmon-config)** — The legendary *sysmon-config* that pioneered the baseline for endpoint visibility
-- **[TrustedSec — SysmonCommunityGuide](https://github.com/trustedsec/SysmonCommunityGuide)** — Deep technical reference by Carlos Perez
-- **[MITRE ATT&CK](https://attack.mitre.org/)** — The framework that keeps this project honest
+- **[Wazuh Team](https://wazuh.com/)** - Premier open-source SIEM/XDR engine and continuous community support
+- **[Microsoft Learn — Enable Sysmon](https://learn.microsoft.com/pt-br/windows/security/operating-system-security/sysmon/how-to-enable-sysmon)** - Official guide for native Sysmon enablement
+- **[Native Sysmon Announcement](https://techcommunity.microsoft.com/blog/windows-itpro-blog/native-sysmon-functionality-coming-to-windows/4468112)** - Microsoft Tech Community (Mark Russinovich)
+- **[KB5077241](https://www.catalog.update.microsoft.com/Search.aspx?q=KB5077241)** - Official update catalog entry for Sysmon Native integration
+- **[Olaf Hartong](https://github.com/olafhartong/sysmon-modular)** - Author of *Sysmon-Modular*, key reference for structured configurations and MITRE ATT&CK mapping
+- **[SwiftOnSecurity](https://github.com/SwiftOnSecurity/sysmon-config)** - The legendary *sysmon-config* that pioneered the baseline for endpoint visibility
+- **[TrustedSec — SysmonCommunityGuide](https://github.com/trustedsec/SysmonCommunityGuide)** - Deep technical reference by Carlos Perez
+- **[MITRE ATT&CK](https://attack.mitre.org/)** - The framework that keeps this project honest
 
 ---
 
