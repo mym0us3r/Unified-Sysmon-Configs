@@ -17,6 +17,65 @@ Endpoint visibility is the cornerstone of modern Detection Engineering. With the
 
 This repository serves as a centralized hub for production-ready configurations, bridging the gap between legacy Sysinternals deployments and the new native integration.
 
+This project adopts a Sysmon Native-oriented configuration strategy, moving beyond traditional legacy approaches to leverage the high-fidelity telemetry of modern Windows environments.
+
+Legacy Sysmon configurations were traditionally designed around a "collect-first, filter-later" model. This often resulted in:
+
+* High event volume (Excessive EPS/Logging).
+* Heavy reliance on SIEM parsing and post-processing.
+* Limited behavioral context at the endpoint level.
+
+## With Sysmon Native, the paradigm shifts to:
+
+*Filter at the source, dispatch only high-value telemetry!*
+
+* Legacy Mindset: Collect as much as possible and handle the noise at the SIEM.
+* Native Mindset: Apply intelligence at the endpoint to forward only actionable, high-signal events.
+
+### Practical Example: Process Creation (EID 1)
+
+*Legacy (Standard/Broad Approach)*
+
+`<ProcessCreate onmatch="include">
+  <Image condition="image">powershell.exe</Image>
+</ProcessCreate>`
+
+The Issue: High noise floor, low intelligence, and constant false positives from legitimate administrative activity.
+
+*Native (Behavioral/Optimized Approach)*
+
+`<ProcessCreate onmatch="include">
+  <Rule groupRelation="and">
+    <Image condition="image">powershell.exe</Image>
+    <CommandLine condition="contains any">
+      -enc;-nop;-w hidden;
+      IEX;Invoke-Expression;
+      DownloadString;
+      FromBase64String
+    </CommandLine>
+  </Rule>
+</ProcessCreate>`
+
+The Gain: Massive noise reduction, focus on malicious intent/obfuscation, and precise MITRE ATT&CK (T1059) mapping.
+
+# What Changes in Practice?
+* Structured Events: Sysmon Native preserves event integrity and structure from kernel to agent.
+* Higher Fidelity: Command-line arguments, parent-child relationships, and process context are significantly more reliable.
+* Reduced Noise: Advanced exclusions are designed to silence benign system activity before it leaves the host.
+* Behavioral Detection: Shifting the focus from static IOCs (hashes/IPs) to dynamic TTPs (Tactics, Techniques, and Procedures).
+
+## Detection Philosophy - Instead of merely flagging tools, this configuration focuses on identifying:
+
+* Suspicious Execution Patterns (e.g., encoded or hidden PowerShell).
+* LOLBins Abuse (Living-off-the-Land Binaries).
+* Credential Access Behavior (LSASS memory access/dumping).
+* Persistence Mechanisms (Registry hijacking, WMI subscriptions).
+* Command & Control (C2) Indicators (DNS beaconing and non-standard port usage).
+* Lower Ingestion Costs: Drastic reduction in data volume sent to the SIEM/Wazuh.
+* Higher Signal-to-Noise Ratio: Analysts spend time on threats, not logs.
+* Enhanced Threat Hunting: Cleaner data allows for more complex correlation and pivoting.
+* MITRE ATT&CK Alignment: Direct visibility into the adversary playbook.
+
 ---
 
 ## 📘 Featured Documentation: Sysmon as a Native Resource
