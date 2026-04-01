@@ -1,0 +1,55 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 03/27/2026 Friday :)
+
+  Sysmon Event ID 20 rules: 89499 - 89510
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 20: WmiEvent (Consumer Activity)
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  MIGRATION NOTES:
+    Legacy anchor if_group>sysmon_event_20 replaced by:
+      if_sid>89499 (Native EID 20 anchor, this file)
+    ANCHOR FIX: if_sid>60000 replaced by if_group>sysmon_event_20
+    Base anchor was: if_sid>60000 + providerName + eventID ^20$ (rule 89499)
+    All child rules chain from if_sid>89499 or their logical parent.
+    Full parity with Wazuh 4.14.4 server ruleset + complete MITRE coverage.
+-->
+<group name="sysmon,sysmon_eid20_detections,windows,">
+
+  <!-- ================================================================
+       BASE ANCHOR - EID 20 (WmiEvent Consumer Activity)
+  ================================================================ -->
+  <rule id="89499" level="0">
+    <if_group>sysmon_event_20</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Sysmon Native [EID 20]: WmiEventConsumer activity detected</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- T1546.003 - WMI Consumer created (WMI-based persistence) -->
+  <rule id="89501" level="12">
+    <if_sid>89499</if_sid>
+    <field name="win.eventdata.type" type="pcre2">(?i)(Command Line|Script)</field>
+    <description>Sysmon Native [T1546.003]: WmiConsumerEvent created - possible WMI-based persistence tactic</description>
+    <options>no_full_log</options>
+    <mitre><id>T1546.003</id></mitre>
+  </rule>
+
+  <rule id="89502" level="14">
+    <if_sid>89501</if_sid>
+    <field name="win.eventdata.destination" type="pcre2">(?i)(powershell|rundll32\.exe|cmd\.exe)</field>
+    <description>Sysmon Native [T1546.003]: WmiConsumerEvent created using command-executing binaries (powershell/rundll32/cmd) - WMI persistence confirmed</description>
+    <options>no_full_log</options>
+    <mitre><id>T1546.003</id></mitre>
+  </rule>
+
+</group>

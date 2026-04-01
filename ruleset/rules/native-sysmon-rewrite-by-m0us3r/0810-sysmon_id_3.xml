@@ -1,0 +1,128 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 03/27/2026 Friday :)
+
+  Sysmon Event ID 3 rules: 92100 - 92150
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 3: Network Connection
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  MIGRATION NOTES:
+    Legacy anchor if_group>sysmon_event3 replaced by:
+      if_sid>92100 (Native EID 3 anchor, this file)
+    ANCHOR FIX: if_sid>60000 replaced by if_group>sysmon_event3
+    Base anchor was: if_sid>60000 + providerName + eventID ^3$ (rule 92100)
+    All child rules chain from if_sid>92100 or their logical parent.
+    Rule 92110: legacy if_sid>92101, 61605 simplified to if_sid>92101.
+    Full parity with Wazuh 4.14.4 server ruleset + complete MITRE coverage.
+-->
+<group name="sysmon,sysmon_eid3_detections,windows,">
+
+  <!-- ================================================================
+       BASE ANCHOR - EID 3 (Network Connection)
+  ================================================================ -->
+  <rule id="92100" level="0">
+    <if_group>sysmon_event3</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Sysmon Native [EID 3]: Network connection by $(win.eventdata.image)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- T1095 - PowerShell communicating over TCP -->
+  <rule id="92101" level="0">
+    <if_sid>92100</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\powershell\.exe</field>
+    <field name="win.eventdata.protocol">^tcp$</field>
+    <description>Sysmon Native [T1095]: PowerShell process communicating over TCP</description>
+    <options>no_full_log</options>
+    <mitre><id>T1095</id></mitre>
+  </rule>
+
+  <rule id="92102" level="6">
+    <if_sid>92101</if_sid>
+    <field name="win.eventdata.destinationPort">^135$</field>
+    <description>Sysmon Native [T1110]: Suspicious DCOM/RPC activity from PowerShell process (port 135)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1110</id></mitre>
+  </rule>
+
+  <rule id="92103" level="6">
+    <if_sid>92101</if_sid>
+    <field name="win.eventdata.destinationPort">^389$</field>
+    <description>Sysmon Native [T1018]: LDAP activity from PowerShell process - possible remote system discovery (port 389)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1018</id></mitre>
+  </rule>
+
+  <!-- T1095 - RtLO binary creating network connection -->
+  <rule id="92104" level="15">
+    <if_sid>92100</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(*UTF)\N{U+202E}</field>
+    <description>Sysmon Native [T1095]: Suspicious binary with Right-to-Left Override character created network connection to $(win.eventdata.destinationIp):$(win.eventdata.destinationPort)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1095</id></mitre>
+  </rule>
+
+  <!-- T1021.002 - Suspicious access to Windows admin shares (SMB) -->
+  <rule id="92105" level="3">
+    <if_sid>92100</if_sid>
+    <field name="win.eventdata.destinationPort" type="pcre2">^(135|445)$</field>
+    <description>Sysmon Native [T1021.002]: Possible suspicious access to Windows admin shares (ports 135/445)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1021.002</id></mitre>
+  </rule>
+
+  <rule id="92106" level="3">
+    <if_sid>92105</if_sid>
+    <field name="win.eventdata.image" type="pcre2">^System$</field>
+    <description>Sysmon Native [T1021.002]: Windows System process activity over SMB port - possible suspicious access to admin shares</description>
+    <options>no_full_log</options>
+    <mitre><id>T1021.002</id></mitre>
+  </rule>
+
+  <!-- T1095 - Script interpreter generating TCP traffic -->
+  <rule id="92107" level="4">
+    <if_sid>92100</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\(c|w)script\.exe</field>
+    <field name="win.eventdata.protocol" type="pcre2">tcp</field>
+    <description>Sysmon Native [T1095]: Script interpreter generated suspicious network activity over TCP</description>
+    <options>no_full_log</options>
+    <mitre><id>T1095</id></mitre>
+  </rule>
+
+  <!-- T1021.001 - RDP port activity (3389) -->
+  <rule id="92108" level="0">
+    <if_sid>92100</if_sid>
+    <field name="win.eventdata.destinationPort" type="pcre2">^3389$</field>
+    <description>Sysmon Native [T1021.001]: RDP port network activity detected from $(win.eventdata.sourceIp) to $(win.eventdata.destinationIp)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1021.001</id></mitre>
+  </rule>
+
+  <rule id="92109" level="15">
+    <if_sid>92108</if_sid>
+    <field name="win.eventdata.destinationIp" type="pcre2">0:0:0:0:0:0:0:1|127\.0\.0\.1</field>
+    <field name="win.eventdata.sourceIp" type="pcre2">0:0:0:0:0:0:0:1|127\.0\.0\.1</field>
+    <description>Sysmon Native [T1021.001]: RDP activity from/to loopback address - possible exploit using reverse tunneling</description>
+    <options>no_full_log</options>
+    <mitre><id>T1021.001</id></mitre>
+  </rule>
+
+  <!-- T1021.006 - WinRM activity (port 5985) -->
+  <rule id="92110" level="4">
+    <if_sid>92101</if_sid>
+    <field name="win.eventdata.destinationPort" type="pcre2">^5985$</field>
+    <description>Sysmon Native [T1021.006]: WinRM activity detected from $(win.eventdata.sourceIp) to $(win.eventdata.destinationIp) (port 5985)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1021.006</id></mitre>
+  </rule>
+
+</group>
