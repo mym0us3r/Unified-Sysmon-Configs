@@ -24,6 +24,7 @@ Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat huntin
 - [Pre-Deployment & Health Checks](#-pre-deployment--health-checks)
 - [Automated Health Audit](#-automated-health-audit-recommended)
 - [Wazuh Integration](#-wazuh-discover-native-sysmon-integration)
+- [**Wazuh Ruleset - Native Sysmon Rewrite**](#-wazuh-ruleset--native-sysmon-rewrite)
 - [Acknowledgments & Credits](#-acknowledgments--credits)
 
 ---
@@ -110,7 +111,7 @@ Instead of merely flagging tools, this configuration focuses on identifying **in
 </ProcessCreate>
 ```
 
-**The problem:** Fires on every PowerShell invocation — legitimate admin tasks, scripts, IDE integrations. High noise floor, zero behavioral context, constant false positives.
+**The problem:** Fires on every PowerShell invocation - legitimate admin tasks, scripts, IDE integrations. High noise floor, zero behavioral context, constant false positives.
 
 ---
 
@@ -127,7 +128,7 @@ Instead of merely flagging tools, this configuration focuses on identifying **in
 </Rule>
 ```
 
-**The gain:** Requires **both** conditions simultaneously via `groupRelation="and"` — fires only when PowerShell is launched with known evasion or obfuscation flags.
+**The gain:** Requires **both** conditions simultaneously via `groupRelation="and"` - fires only when PowerShell is launched with known evasion or obfuscation flags.
 
 ### What this detects
 
@@ -169,7 +170,19 @@ Unified-Sysmon-Configs/
 ├── ruleset/
 │   └── rules/
 │       ├── wazuh-server-4.14/           # Production-verified rules (live environment)
-│       └── wazuh-official-repo/         # Alignment with official Wazuh content
+│       ├── wazuh-official-repo/         # Alignment with official Wazuh content
+│       └── native-sysmon-rewrite-by-m0us3r/   # ← NEW · Full Native Sysmon rewrite
+│           ├── 0595-win-sysmon_rules.xml        #   52 rules · EID 1-23 infra + anomaly
+│           ├── 0800-sysmon_id_1.xml             #   83 rules · EID 1 Process Creation
+│           ├── 0810-sysmon_id_3.xml             #   11 rules · EID 3 Network Connection
+│           ├── 0820-sysmon_id_7.xml             #   10 rules · EID 7 Image Load
+│           ├── 0830-sysmon_id_11.xml            #   29 rules · EID 11 File Create
+│           ├── 0850-sysmon_process_anomalies.xml #  24 rules · EID 1 Process Anomaly
+│           ├── 0860-sysmon_id_13.xml            #   11 rules · EID 13 Registry Value Set
+│           ├── 0870-sysmon_id_8.xml             #    5 rules · EID 8 CreateRemoteThread
+│           ├── 0945-sysmon_id_10.xml            #    4 rules · EID 10 Process Access
+│           └── 0950-sysmon_id_20.xml            #    3 rules · EID 20 WMI Consumer
+│                                                #  232 rules total · 8 EIDs covered
 │
 ├── scripts/
 │   └── Check-SysmonHealth.ps1           # 8-layer automated diagnostic script
@@ -185,11 +198,14 @@ Unified-Sysmon-Configs/
 **Wazuh ruleset sync:**
 
 ```bash
-# Copy custom rules to Wazuh manager
-cp ruleset/rules/wazuh-server-4.14/*.xml /var/ossec/etc/rules/
+# Copy native rewrite rules to Wazuh manager
+cp ruleset/rules/native-sysmon-rewrite-by-m0us3r/*.xml /var/ossec/ruleset/rules/
 
-# Validate and restart
-/var/ossec/bin/wazuh-logtest
+# Validate - must return zero warnings
+/var/ossec/bin/wazuh-analysisd -t 2>&1 | grep -i "warning\|error\|critical"
+echo "Exit: $?"
+
+# Apply
 systemctl restart wazuh-manager
 ```
 
@@ -312,7 +328,7 @@ For deep and automated telemetry validation, use the senior diagnostic script in
 **Run:**
 
 ```powershell
-# Standard run — requires Administrator
+# Standard run - requires Administrator
 powershell.exe -ExecutionPolicy Bypass -File ".\Check-SysmonHealth.ps1"
 
 # With report exported to Desktop
@@ -341,17 +357,179 @@ Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion - te
 
 ---
 
+## 🔧 Wazuh Ruleset - Native Sysmon Rewrite
+
+> **Production-validated · Wazuh 4.14.4 · Windows 11 24H2+ (KB5077241) · MITRE ATT&CK v15 · Zero warnings on `wazuh-analysisd -t`**
+
+![rules](https://img.shields.io/badge/rules-232-brightgreen)
+![EIDs](https://img.shields.io/badge/EIDs-8-blue)
+![anchor](https://img.shields.io/badge/anchor-if__group-orange)
+![status](https://img.shields.io/badge/status-production--validated-success)
+
+Complete rewrite of the Wazuh Sysmon detection ruleset from Legacy Sysinternals format to **Sysmon Native** (Windows 11 24H2+ kernel-integrated Sysmon). Every rule was rebuilt from the ground up, tested against live telemetry from a production Wazuh 4.14.4 environment, and validated with zero warnings.
+
+---
+
+### 🧱 The Core Problem - Why Legacy Rules Fail on 24H2+
+
+Legacy rules used `if_group>sysmon_event1` and `sysmon.*` field names that are only populated by the old Sysinternals dispatcher decoder. Starting with Windows 11 24H2+ (KB5077241), events arrive via `Microsoft-Windows-Sysmon/Operational` using `win.eventdata.*` fields - making every legacy detection rule **silently non-functional**.
+
+Additionally, all attempts using `if_sid>60000` as a base anchor failed at runtime because the Wazuh rule engine walks the tree **depth-first** and stops at rule `61603` (EID dispatcher), never reaching a sibling branch anchored at `60000`.
+
+**The architectural fix: `if_group>sysmonEventX`**
+
+```text
+Event arrives (Microsoft-Windows-Sysmon/Operational)
+  -> 60004  (channel routing)
+    -> 61600 (severity INFORMATION)
+      -> 61603 (EID 1, assigns runtime group: sysmon_event1)
+        -> 92000 (if_group>sysmon_event1 + providerName)   <- FIRES ✅
+          -> 92027 (T1059.001 · PowerShell chain)           <- FIRES ✅
+          -> 92057 (T1059.001 · EncodedCommand · level 12)  <- FIRES ✅
+```
+
+`if_group` references the **runtime group tag** assigned during event processing - no load-order dependency, no compile-time SID resolution failure.
+
+---
+
+### 📊 Rule Count - Legacy vs Native
+
+| File | Legacy | Native | Delta | EID | Coverage |
+|---|---|---|---|---|---|
+| `0595-win-sysmon_rules.xml` | 56 | 52 | -4 | 1-23 | EventChannel infrastructure routing + EID 1 process anomaly |
+| `0800-sysmon_id_1.xml` | 26 | **83** | +57 | 1 | Process Creation - Native anchor + full detection chain |
+| `0810-sysmon_id_3.xml` | 10 | 11 | +1 | 3 | Network Connection |
+| `0820-sysmon_id_7.xml` | 7 | 10 | +3 | 7 | Image Load - vaultcli.dll tiered detection |
+| `0830-sysmon_id_11.xml` | 28 | 29 | +1 | 11 | File Create |
+| `0850-sysmon_process_anomalies.xml` | 39 *(was 0330)* | 24 | -15 | 1 | Process Anomaly chain (parent/image validation) |
+| `0860-sysmon_id_13.xml` | 10 | 11 | +1 | 13 | Registry Value Set |
+| `0870-sysmon_id_8.xml` | 4 | 5 | +1 | 8 | CreateRemoteThread |
+| `0945-sysmon_id_10.xml` | 3 | 4 | +1 | 10 | Process Access |
+| `0950-sysmon_id_20.xml` | 2 | 3 | +1 | 20 | WMI Consumer Activity |
+| **GRAND TOTAL** | **185** | **232** | **+47** | **8 EIDs** | |
+
+> The delta in `0595` and `0850` reflects removal of **legacy Sysinternals dispatcher rules** (`if_sid>18100` + `sysmon.*` fields) that are architecturally incompatible with the Native pipeline. **Zero detection coverage was lost.**
+
+---
+
+### 📁 File Naming - Load Order Is Critical
+
+Wazuh loads rules alphabetically. The group tag `sysmon_event1` is registered when rule `61603` is processed inside `0595`. Any file referencing `if_group>sysmon_event1` **must load after `0595`**.
+
+```text
+0595  <- defines sysmon_event1 group tag (rule 61603)  <- group exists from here
+0800  <- 92000 (Native EID 1 anchor: if_group>sysmon_event1)
+0810  <- EID 3  · if_group>sysmon_event3
+0820  <- EID 7  · if_group>sysmon_event7
+0830  <- EID 11 · if_group>sysmon_event_11
+0850  <- EID 1 process anomaly · if_group>sysmon_event1  <- MUST be > 0595
+0860  <- EID 13 · if_group>sysmon_event_13
+0870  <- EID 8  · if_group>sysmon_event8
+0945  <- EID 10 · if_group>sysmon_event_10
+0950  <- EID 20 · if_group>sysmon_event_20
+```
+
+> The file `0330-sysmon_rules.xml` is **renamed to `0850-sysmon_process_anomalies.xml`**. This is not cosmetic - it is a required architectural change. Naming it `0330` causes 24 rules to be silently discarded at load time.
+
+---
+
+### 🔐 vaultcli.dll - Tiered Detection Architecture (Rule 92153 · EID 7)
+
+`vaultcli.dll` (Windows Credential Vault Client Library) is a primary target for **T1555 / T1555.004** credential dumping - Mimikatz `vault::list`, `vault::cred` and custom tooling.
+
+> **Important:** The `signed` field in EID 7 describes the **loaded DLL**, not the loading process. `vaultcli.dll` always reports `signed=true / signature=Microsoft Windows` regardless of who loads it. Detection must be based on **loading process path risk**.
+
+| Rule | Level | Trigger | Analyst Action |
+|---|---|---|---|
+| `92153` | 0 | vaultcli.dll loaded - known OS processes silenced by **full path** | Silent base anchor |
+| `92158` | **15** | Loading process path in `Temp` / `AppData` / `Public` / `Downloads` | **CRITICAL** - treat as active credential dump |
+| `92159` | 10 | Third-party process outside Windows system paths (e.g. MobaXterm) | **ALERT** - verify expected behavior on this host |
+
+**OS exclusions confirmed via live Windows 11 24H2+ telemetry:**
+
+- `VaultCmd.exe` - legitimate vault management tool
+- `svchost`, `lsass`, `explorer`, `LogonUI`, `CredentialUIBroker` - core OS processes
+- `backgroundTaskHost`, `taskhostw`, `winlogon` - Windows task and session hosts
+- `C:\Windows\SystemApps\...\SearchHost.exe` - Windows 11 Search UI - **full path enforced**
+- `C:\Windows\System32\RuntimeBroker.exe` - UWP broker - **full path enforced**
+
+> Full-path exclusions prevent bypass via process name spoofing. A `malware.exe` renamed `SearchHost.exe` in `AppData\Temp` still triggers rule `92158` at level 15.
+
+---
+
+### 🔵 Dual Provider Visibility - Preserved by Design
+
+This rewrite does **not** replace or suppress EID 4688 (Security-Auditing). Both providers fire simultaneously, delivering complementary visibility layers:
+
+```text
+[05:12:46] Rule 67027 | L3  | EID 4688 | Microsoft-Windows-Security-Auditing
+[05:12:46] Rule 92057 | L12 | EID 1    | Microsoft-Windows-Sysmon
+```
+
+| Provider | Rule | Level | Value |
+|---|---|---|---|
+| `Microsoft-Windows-Security-Auditing` | 67027 | 3 | Process telemetry - always-on baseline |
+| `Microsoft-Windows-Sysmon` | 92000–92082 | 3–15 | MITRE-aligned behavioral intelligence |
+
+> **EID 4688** = *"who was born"* · **Sysmon EID 1** = *"what it is doing and why it matters"*
+
+---
+
+### 🗺️ MITRE ATT&CK Coverage
+
+| Tactic | Techniques Covered |
+|---|---|
+| **Execution** | T1059, T1059.001, T1059.003, T1059.005, T1059.007, T1047, T1204.002, T1569.002 |
+| **Persistence** | T1543.003, T1546, T1546.003, T1546.011, T1547.001 |
+| **Privilege Escalation** | T1548, T1548.002 |
+| **Defense Evasion** | T1027, T1027.004, T1036, T1036.002, T1036.003, T1070.004, T1112, T1140, T1218, T1562, T1574 |
+| **Credential Access** | T1003.001, T1003.002, T1555, T1555.004 |
+| **Discovery** | T1018, T1033, T1069, T1082, T1087, T1135, T1518.001 |
+| **Lateral Movement** | T1021.001, T1021.002, T1021.004, T1021.006 |
+| **Collection** | T1560.001 |
+| **Command & Control** | T1095, T1105 |
+
+---
+
+### ⚙️ Escaping Reference - Critical for Rule Maintenance
+
+The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
+
+| Context | PCRE2 Rule | Example |
+|---|---|---|
+| Stored internally by decoder | - | `C:\\Windows\\System32\\cmd.exe` |
+| To match `\` in PCRE2 | `\\\\` | `(?i)\\\\cmd\.exe$` |
+| Path separators in field rules | `\\\\` | `[c-z]:\\\\Windows\\\\` |
+| Regex metacharacters (`\s \d \b \.`) | `\\` | `\.exe` |
+
+---
+
+### ✅ Production Validation
+
+```text
+Manager  : Wazuh 4.14.4 (Ubuntu)
+Agent    : Win-Dell-10 · Windows 11 24H2+ (KB5077241)
+Analyzer : wazuh-analysisd -t → 0 warnings, exit 0
+
+[05:12:26] Rule 92027 | L4  | EID 1 | T1059.001 · PowerShell spawned PowerShell
+[05:12:46] Rule 92057 | L12 | EID 1 | T1059.001 · PowerShell EncodedCommand detected
+[05:14:31] Rule 92057 | L12 | EID 1 | T1059.001 · PowerShell EncodedCommand detected
+EID 4688 (Rule 67027) firing in parallel - dual provider visibility confirmed ✅
+```
+
+---
+
 ## 🤝 Acknowledgments & Credits
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
 
 - **[Wazuh Team](https://wazuh.com/)** - Premier open-source SIEM/XDR engine and continuous community support
-- **[Microsoft Learn — Enable Sysmon](https://learn.microsoft.com/pt-br/windows/security/operating-system-security/sysmon/how-to-enable-sysmon)** - Official guide for native Sysmon enablement
+- **[Microsoft Learn - Enable Sysmon](https://learn.microsoft.com/pt-br/windows/security/operating-system-security/sysmon/how-to-enable-sysmon)** - Official guide for native Sysmon enablement
 - **[Native Sysmon Announcement](https://techcommunity.microsoft.com/blog/windows-itpro-blog/native-sysmon-functionality-coming-to-windows/4468112)** - Microsoft Tech Community (Mark Russinovich)
 - **[KB5077241](https://www.catalog.update.microsoft.com/Search.aspx?q=KB5077241)** - Official update catalog entry for Sysmon Native integration
 - **[Olaf Hartong](https://github.com/olafhartong/sysmon-modular)** - Author of *Sysmon-Modular*, key reference for structured configurations and MITRE ATT&CK mapping
 - **[SwiftOnSecurity](https://github.com/SwiftOnSecurity/sysmon-config)** - The legendary *sysmon-config* that pioneered the baseline for endpoint visibility
-- **[TrustedSec — SysmonCommunityGuide](https://github.com/trustedsec/SysmonCommunityGuide)** - Deep technical reference by Carlos Perez
+- **[TrustedSec - SysmonCommunityGuide](https://github.com/trustedsec/SysmonCommunityGuide)** - Deep technical reference by Carlos Perez
 - **[MITRE ATT&CK](https://attack.mitre.org/)** - The framework that keeps this project honest
 
 ---
