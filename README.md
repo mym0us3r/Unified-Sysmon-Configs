@@ -370,11 +370,15 @@ Complete rewrite of the Wazuh Sysmon detection ruleset from Legacy Sysinternals 
 
 ---
 
-### 🧱 The Core Problem - Why Legacy Rules Fail on 24H2+
+### 🧱 The Core Problem - Why the Migrated Rules Fail on 24H2+
 
-Legacy rules used `if_group>sysmon_event1` and `sysmon.*` field names that are only populated by the old Sysinternals dispatcher decoder. Starting with Windows 11 24H2+ (KB5077241), events arrive via `Microsoft-Windows-Sysmon/Operational` using `win.eventdata.*` fields - making every legacy detection rule **silently non-functional**.
+Two independent failure modes — both producing silent, zero-alert results.
 
-Additionally, all attempts using `if_sid>60000` as a base anchor failed at runtime because the Wazuh rule engine walks the tree **depth-first** and stops at rule `61603` (EID dispatcher), never reaching a sibling branch anchored at `60000`.
+**Failure 1 - Load order:** The original `0330-sysmon_rules.xml` used `sysmon.*` field names from a pre-Wazuh 3.8.0 decoder (`if_sid>18100`). That file was correctly rewritten to use `win.eventdata.*` fields and `if_group>sysmon_event1`. However, it also referenced `if_sid>92000` (defined in `0800`), and because `0330` loads before `0800` alphabetically, Wazuh discards those rules silently at load time. Fix: rename to `0850` so it loads after `0800`.
+
+> **Important clarification:** `win.eventdata.*` fields are not exclusive to Sysmon Native. They have been available with Legacy Sysmon since Wazuh 3.8.0, when the agent is configured with `log_format>eventchannel`. What KB5077241 changed was the **deployment model** (Sysinternals binary to Windows Optional Feature), the **schema version** (4.50 to 4.91 with new operators like `groupRelation="and"`), and the **lifecycle management** (manual updates to Windows Update). The fields and the decoder remain the same.
+
+**Failure 2 - Runtime evaluation path:** All attempts using `if_sid>60000` as a base anchor for the new native detection rules failed silently in production. The Wazuh rule engine walks the tree **depth-first** and stops at rule `61603` (EID dispatcher), never reaching a sibling branch anchored at `60000`.
 
 **The architectural fix: `if_group>sysmonEventX`**
 
