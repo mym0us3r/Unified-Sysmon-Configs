@@ -1,0 +1,125 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 03/27/2026 Friday :)
+
+  Sysmon Event ID 13 rules: 92299 - 92399
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 13: Registry Value Set
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  MIGRATION NOTES:
+    Legacy anchor if_group>sysmon_event_13 replaced by:
+      if_sid>92299 (Native EID 13 anchor, this file)
+    ANCHOR FIX: if_sid>60000 replaced by if_group>sysmon_event_13
+    Base anchor was: if_sid>60000 + providerName + eventID ^13$ (rule 92299)
+    All child rules chain from if_sid>92299 or their logical parent.
+    Rule 92308: migrated from legacy if_sid>61615 to Native anchor if_sid>92299.
+    Full parity with Wazuh 4.14.4 server ruleset + complete MITRE coverage.
+-->
+<group name="sysmon,sysmon_eid13_detections,windows,">
+
+  <!-- ================================================================
+       BASE ANCHOR - EID 13 (Registry Value Set)
+  ================================================================ -->
+  <rule id="92299" level="0">
+    <if_group>sysmon_event_13</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Sysmon Native [EID 13]: Registry value modified by $(win.eventdata.image)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- T1547.001 - Registry ASEP (Run key) modification -->
+  <rule id="92300" level="0">
+    <if_sid>92299</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)SOFTWARE\\\\(WOW6432NODE\\\\M|M)ICROSOFT\\\\WINDOW(S|S NT)\\\\CURRENTVERSION\\\\(RUN|TERMINAL SERVER\\\\INSTALL\\\\SOFTWARE\\\\MICROSOFT\\\\WINDOWS\\\\CURRENTVERSION\\\\RUN)</field>
+    <description>Sysmon Native [T1547.001]: Registry content added for execution on next logon (ASEP Run key)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1547.001</id></mitre>
+  </rule>
+
+  <rule id="92301" level="12">
+    <if_sid>92300</if_sid>
+    <field name="win.eventdata.details" type="pcre2">(?i)\.(lnk|vbs|vba)</field>
+    <description>Sysmon Native [T1547.001]: Suspicious file extension detected in registry ASEP - will execute on next logon</description>
+    <options>no_full_log</options>
+    <mitre><id>T1547.001</id></mitre>
+  </rule>
+
+  <rule id="92302" level="6">
+    <if_sid>92300</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\reg\.exe</field>
+    <description>Sysmon Native [T1547.001]: Registry ASEP entry modified using command line application reg.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1547.001</id></mitre>
+  </rule>
+
+  <rule id="92303" level="12">
+    <if_sid>92300</if_sid>
+    <field name="win.eventdata.details" type="pcre2">(?i)(VNC|tvnserver\.exe)</field>
+    <description>Sysmon Native [T1547.001]: Registry ASEP entry points to a remote access tool (VNC)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1547.001</id></mitre>
+  </rule>
+
+  <!-- T1548.002 / T1112 - UAC bypass via CLASSES\FOLDER or MS-SETTINGS registry key -->
+  <rule id="92304" level="6">
+    <if_sid>92299</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)CLASSES\\\\(FOLDER|MS-SETTINGS)\\\\SHELL\\\\OPEN\\\\COMMAND</field>
+    <description>Sysmon Native [T1548.002][T1112]: Modified registry key associated with UAC bypass by auto-elevated processes</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548.002</id><id>T1112</id></mitre>
+  </rule>
+
+  <rule id="92305" level="12">
+    <if_sid>92304</if_sid>
+    <field name="win.eventdata.details" type="pcre2">(?i)(cmd|powershell)\.exe</field>
+    <description>Sysmon Native [T1548.002][T1112]: Command interpreter added to registry key associated with UAC bypass by auto-elevated processes</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548.002</id><id>T1112</id></mitre>
+  </rule>
+
+  <rule id="92306" level="12">
+    <if_sid>92304</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\(cmd|powershell)\.exe</field>
+    <description>Sysmon Native [T1548.002][T1112]: $(win.eventdata.image) added registry subkey associated with UAC bypass by auto-elevated processes</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548.002</id><id>T1112</id></mitre>
+  </rule>
+
+  <!-- T1543.003 - New service created via registry -->
+  <rule id="92307" level="3">
+    <if_sid>92299</if_sid>
+    <field name="win.eventdata.details" type="pcre2">(?i)\.exe</field>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)System\\\\CurrentControlSet\\\\Services</field>
+    <description>Sysmon Native [T1543.003]: Evidence of new service creation in registry under $(win.eventdata.targetObject) - binary: $(win.eventdata.details)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1543.003</id></mitre>
+  </rule>
+
+  <!-- T1546.015 - COM Hijacking via CLSID registry key
+       Migrated from legacy if_sid>61615 to Native anchor if_sid>92299 -->
+  <rule id="92308" level="3">
+    <if_sid>92299</if_sid>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)CLSID.*LocalServer</field>
+    <description>Sysmon Native [T1546.015]: Possible COM Hijacking evidence in registry under $(win.eventdata.targetObject) - binary: $(win.eventdata.details)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1546.015</id></mitre>
+  </rule>
+
+  <rule id="92309" level="15">
+    <if_sid>92308</if_sid>
+    <field name="win.eventdata.details" type="pcre2">(?i)AppData</field>
+    <description>Sysmon Native [T1546.015]: COM Hijacking confirmed - registry CLSID points to suspicious binary in AppData: $(win.eventdata.details)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1546.015</id></mitre>
+  </rule>
+
+</group>

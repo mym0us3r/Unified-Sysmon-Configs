@@ -1,0 +1,808 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 03/27/2026 Friday :)
+
+  Sysmon Event ID 1 rules: 92000 - 92100
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 1: Process Creation only
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators → \\\\ | regex meta (\s \d \b \.) → \\
+
+  MIGRATION NOTES:
+    ANCHOR FIX: if_sid>60000 replaced by if_group>sysmon_event1.
+    Reason: if_group references a runtime group tag assigned by rule 61603
+    (in 0595-win-sysmon_rules.xml) during event processing. The Wazuh rule
+    engine walks depth-first from 60000 to 61603 and stops there. Rule 92000
+    using if_sid>60000 was a sibling branch never reached at runtime.
+    if_group>sysmon_event1 makes 92000 a child of any rule in that group,
+    which is exactly what 61603 assigns on EID 1 events.
+    providerName field check retained to enforce Native Sysmon only.
+    eventID field removed (redundant - already implied by sysmon_event1 group).
+    All child rules chain from if_sid>92000 or their logical parent.
+    Duplicate rules removed: original 92022 == 92030 (kept as 92022).
+    92077 and 92078: migrated to Native anchor.
+    Full parity with Wazuh 4.14.4 server ruleset + complete MITRE coverage.
+-->
+<group name="sysmon,sysmon_eid1,windows,">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR — EID 1 (Process Creation)
+       Replaces legacy if_group>sysmon_event1 across all child rules.
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92000" level="3">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Sysmon Nativo [EID 1]: Processo criado - $(win.eventdata.image)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1059.005 — Scripting Interpreter spawning processes
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92001" level="4">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\(c|w)script\.exe</field>
+    <description>Sysmon Nativo [T1059.005]: Interpretador de script criou novo processo</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.005</id></mitre>
+  </rule>
+
+  <rule id="92002" level="6">
+    <if_sid>92001</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\\\\(c|w)script\.exe.+\.(bat|cmd|lnk|pif|vbs|vbe|js|wsh|ps1)</field>
+    <description>Sysmon Nativo [T1059]: Interpretador de script criou outro interpretador de script</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059</id></mitre>
+  </rule>
+
+  <rule id="92003" level="6">
+    <if_sid>92001</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">\\\\cmd\.exe</field>
+    <description>Sysmon Nativo [T1059.003]: Interpretador de script criou instância do cmd.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.003</id></mitre>
+  </rule>
+
+  <rule id="92004" level="6">
+    <if_sid>92001</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)[c-z]:(\\\\Users\\\\Public\\\\|\\\\Users\\\\.+\\\\AppData\\\\local\\\\temp)</field>
+    <description>Sysmon Nativo [T1059]: Interpretador de script criou processo em caminho suspeito</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059</id></mitre>
+  </rule>
+
+  <!-- T1059.003 — PowerShell spawning cmd.exe -->
+  <rule id="92005" level="4">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">\\\\cmd\.exe</field>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\powershell\.exe</field>
+    <description>Sysmon Nativo [T1059.003]: PowerShell criou instância do cmd.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.003</id></mitre>
+  </rule>
+
+  <!-- T1059 — cmd /c|k iniciando script em localização suspeita -->
+  <rule id="92082" level="8">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\\\\(c|w)script\.exe.+[c-z]:\\\\(Windows\\\\Temp|Users)\\\\.+\.(bat|cmd|lnk|pif|vbs|vbe|js|wsh|ps1)</field>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)cmd\.exe.+/(c|k)</field>
+    <description>Sysmon Nativo [T1059]: cmd.exe iniciou script com /c ou /k em localização suspeita</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059</id></mitre>
+  </rule>
+
+  <!-- T1027.004 — PowerShell compilando código via csc.exe -->
+  <rule id="92006" level="6">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\csc\.exe</field>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)powershell.+ExecutionPolicy\s+bypass</field>
+    <description>Sysmon Nativo [T1027.004]: Script PowerShell compilando código via CSC.exe (possível dropper)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1027.004</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1562 — Windows Defender Tampering via PowerShell
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92007" level="3">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\powershell\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)Set-MpPreference</field>
+    <description>Sysmon Nativo [T1562]: Possível adulteração da configuração do Windows Defender via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562</id></mitre>
+  </rule>
+
+  <rule id="92008" level="12">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(DisableRealtimeMonitoring|drtm)\s+(\$true|1)</field>
+    <description>Sysmon Nativo [T1562.001]: Windows Defender RealTime Monitoring desativado via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="92009" level="13">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(DisableIntrusionPreventionSystem|dips)\s+(\$true|1)</field>
+    <description>Sysmon Nativo [T1562.001]: Windows Defender IPS desativado via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="92010" level="13">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(DisableIOAVProtection|dioavp)\s+(\$true|1)</field>
+    <description>Sysmon Nativo [T1562.001]: Windows Defender verificação de downloads desativada via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="92011" level="13">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(DisableScriptScanning|dscrptsc)\s+(\$true|1)</field>
+    <description>Sysmon Nativo [T1562.001]: Windows Defender varredura de scripts desativada via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="92012" level="13">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)EnableControlledFolderAccess\s+(disabled|AuditMode)</field>
+    <description>Sysmon Nativo [T1562.001]: Windows Defender Controlled Folder Access desativado via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="92013" level="13">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)EnableNetworkProtection\s+(disabled|AuditMode)</field>
+    <description>Sysmon Nativo [T1562.001]: Windows Defender proteção de rede desativada via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="92014" level="13">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)MAPSReporting\s+(disabled|AuditMode)</field>
+    <description>Sysmon Nativo [T1562.001]: Microsoft MAPS desativado via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="92015" level="13">
+    <if_sid>92007</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)SubmitSamplesConsent\s+NeverSend</field>
+    <description>Sysmon Nativo [T1562.001]: Windows Defender envio de amostras desativado via PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1036.003 / T1140 — CertUtil mascarado ou decodificando binário
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92016" level="13">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)CertUtil\.exe</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)CertUtil\.exe</field>
+    <description>Sysmon Nativo [T1036.003]: CertUtil.exe mascarado com nome diferente (possível decode de malware)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1036.003</id><id>T1140</id></mitre>
+  </rule>
+
+  <rule id="92017" level="13">
+    <if_sid>92016</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)decode\s+(.+)\s+.+\.exe</field>
+    <description>Sysmon Nativo [T1036.003][T1140]: CertUtil mascarado utilizado para decodificar binário</description>
+    <options>no_full_log</options>
+    <mitre><id>T1036.003</id><id>T1140</id></mitre>
+  </rule>
+
+  <rule id="92018" level="13">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)CertUtil\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)decode\s+(.+)\s+.+\.exe</field>
+    <description>Sysmon Nativo [T1140]: CertUtil.exe utilizado para decodificar binário</description>
+    <options>no_full_log</options>
+    <mitre><id>T1140</id></mitre>
+  </rule>
+
+  <!-- T1574.002 — DLL Side-Loading: MsMpEng em caminho suspeito -->
+  <rule id="92019" level="13">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)MsMpEng\.exe</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\(ProgramData\\\\Microsoft|Program Files)\\\\Windows Defender</field>
+    <description>Sysmon Nativo [T1574.002]: Windows Defender executado em caminho suspeito (possível DLL side-loading)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1574.002</id></mitre>
+  </rule>
+
+  <!-- T1021.004 — Lateral Movement via PSCP -->
+  <rule id="92020" level="6">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">PSCP</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)-scp</field>
+    <description>Sysmon Nativo [T1021.004]: Arquivo copiado para sistema remoto via pscp.exe (SSH)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1021.004</id></mitre>
+  </rule>
+
+  <!-- T1070.004 — PowerShell deletando arquivos -->
+  <rule id="92021" level="3">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)PowerShell\.EXE</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(Remove-Item|ri|rm|rmdir|del|erase|rd)\b</field>
+    <description>Sysmon Nativo [T1070.004]: PowerShell utilizado para deletar arquivos ou diretórios</description>
+    <options>no_full_log</options>
+    <mitre><id>T1070.004</id></mitre>
+  </rule>
+
+  <!-- T1033 — qwinsta: Discovery de sessões RDP (deduplicada: 92022==92030) -->
+  <rule id="92022" level="3">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">qwinsta</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\/server</field>
+    <description>Sysmon Nativo [T1033]: Coleta de informações de sessões Remote Desktop Service</description>
+    <options>no_full_log</options>
+    <mitre><id>T1033</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1003.002 — PowerShell + VSS + SAM hive
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92023" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)PowerShell\.EXE</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\\\\HarddiskVolumeShadowCopy.+\\\\(SAM|SECURITY)</field>
+    <description>Sysmon Nativo [T1003.002][T1059.001]: PowerShell acessando SAM/SECURITY via Volume Shadow Copy</description>
+    <options>no_full_log</options>
+    <mitre><id>T1003.002</id><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92024" level="14">
+    <if_sid>92023</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\[System\.IO\.File\]::Copy</field>
+    <description>Sysmon Nativo [T1003.002]: PowerShell copiando SAM hive via VSS (System.IO.File::Copy)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1003.002</id><id>T1059.001</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1112 / T1003.002 — Reg.exe chain
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92025" level="0">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)reg\.EXE</field>
+    <description>Sysmon Nativo [T1112]: Execução do Reg.exe detectada</description>
+    <options>no_full_log</options>
+    <mitre><id>T1112</id><id>T1012</id></mitre>
+  </rule>
+
+  <rule id="92026" level="14">
+    <if_sid>92025</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)save.+\\\\SAM</field>
+    <description>Sysmon Nativo [T1003.002]: Reg.exe realizando dump da hive SAM</description>
+    <options>no_full_log</options>
+    <mitre><id>T1003.002</id></mitre>
+  </rule>
+
+  <rule id="92041" level="10">
+    <if_sid>92025</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)add.+\/d\s+(")?(?:[A-Za-z\d+\/]{4})*(?:[A-Za-z\d+\/]{3}=|[A-Za-z\d+\/]{2}==)?</field>
+    <description>Sysmon Nativo [T1027][T1112]: Reg.exe adicionando valor com padrão Base64 ao registry</description>
+    <options>no_full_log</options>
+    <mitre><id>T1027</id><id>T1112</id></mitre>
+  </rule>
+
+  <rule id="92045" level="14">
+    <if_sid>92025</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)IMPORT\s+[C-Z]:\\\\Users\\\\Public\\\\.+\.reg</field>
+    <description>Sysmon Nativo [T1112]: Reg.exe importando .reg de Users\Public (localização suspeita)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1112</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1059.001 — PowerShell chain
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92027" level="4">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.image" type="pcre2">\\\\powershell\.exe</field>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\powershell\.exe</field>
+    <description>Sysmon Nativo [T1059.001]: PowerShell criou outra instância de PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92028" level="0">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\.(bat|cmd|lnk|pif|vbs|vbe|js|wsh|ps1)</field>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)powershell\.exe$</field>
+    <description>Sysmon Nativo [T1059.001]: PowerShell executou script</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92029" level="6">
+    <if_sid>92028</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)[c-z]:\\\\(Windows\\\\Temp|Users)\\\\.+\.(bat|cmd|lnk|pif|vbs|vbe|js|wsh|ps1)</field>
+    <description>Sysmon Nativo [T1059.001]: PowerShell executou script em localização suspeita</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92057" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\powershell\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)powershell\.exe.+\-(encodedcommand|e|ea|ec|encodeda|encode|en|enco)\b</field>
+    <description>Sysmon Nativo [T1059.001]: PowerShell criou processo filho com comando Base64 encoded</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1087 — Discovery: net.exe / net1.exe chain
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92031" level="3">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)(net\.EXE|net1\.EXE)</field>
+    <description>Sysmon Nativo [T1087]: Atividade de discovery via net.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1087</id></mitre>
+  </rule>
+
+  <rule id="92032" level="3">
+    <if_sid>92031</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\cmd\.EXE</field>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)\s\/C\s</field>
+    <description>Sysmon Nativo [T1087][T1059.003]: Discovery via net.exe iniciado por cmd.exe /C</description>
+    <options>no_full_log</options>
+    <mitre><id>T1087</id><id>T1059.003</id></mitre>
+  </rule>
+
+  <rule id="92033" level="3">
+    <if_sid>92031</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\powershell\.EXE</field>
+    <description>Sysmon Nativo [T1087][T1059.001]: Discovery via net.exe iniciado por PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1087</id><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92034" level="3">
+    <if_sid>92032</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)view</field>
+    <description>Sysmon Nativo [T1135]: Enumeração de shares via net view por cmd.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1135</id></mitre>
+  </rule>
+
+  <rule id="92035" level="3">
+    <if_sid>92034</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)domain</field>
+    <description>Sysmon Nativo [T1135][T1059.003]: Enumeração de domain shares via net view /domain</description>
+    <options>no_full_log</options>
+    <mitre><id>T1135</id><id>T1059.003</id></mitre>
+  </rule>
+
+  <rule id="92036" level="3">
+    <if_sid>92032</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)(SystemPropertiesAdvanced|net)\.EXE</field>
+    <description>Sysmon Nativo [T1059.003][T1574.001]: Binário $(win.eventdata.image) iniciado por cmd.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.003</id><id>T1574.001</id></mitre>
+  </rule>
+
+  <rule id="92037" level="3">
+    <if_sid>92031,92033</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)use\s</field>
+    <description>Sysmon Nativo [T1567]: Conexão net.exe a recurso remoto por $(win.eventdata.parentImage)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1567</id></mitre>
+  </rule>
+
+  <rule id="92038" level="12">
+    <if_sid>92037</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(live|outlook|google|drive|microsoft|dropbox)</field>
+    <description>Sysmon Nativo [T1102][T1567.002]: Conexão net.exe a recurso cloud por $(win.eventdata.parentImage)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1102</id><id>T1567.002</id></mitre>
+  </rule>
+
+  <rule id="92039" level="3">
+    <if_sid>92031</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)user\s</field>
+    <description>Sysmon Nativo [T1087]: Enumeração de contas de usuário via net.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1087</id></mitre>
+  </rule>
+
+  <rule id="92040" level="12">
+    <if_sid>92039</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)add\s</field>
+    <description>Sysmon Nativo [T1136.001]: $(win.eventdata.originalFileName) executou comando de criação de usuário</description>
+    <options>no_full_log</options>
+    <mitre><id>T1136.001</id></mitre>
+  </rule>
+
+  <rule id="92083" level="7">
+    <if_sid>92031</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">config workstation</field>
+    <description>Sysmon Nativo [T1082]: Coleta de informações do sistema via net config workstation</description>
+    <options>no_full_log</options>
+    <mitre><id>T1082</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1036.003 — Masquerading: PowerShell renomeado (CRÍTICO)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92080" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)PowerShell\.EXE</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)powershell\.exe$</field>
+    <description>Sysmon Nativo [CRÍTICO][T1036.003]: Masquerading detectado — PowerShell renomeado como $(win.eventdata.image)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1036.003</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1562.004 — netsh: Manipulação de regras de Firewall
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92042" level="0">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)netsh\.EXE</field>
+    <description>Sysmon Nativo: netsh.exe executado</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <rule id="92043" level="10">
+    <if_sid>92042</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)advfirewall|firewall</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)add\srule</field>
+    <description>Sysmon Nativo [T1562.004]: netsh utilizado para adicionar regra de firewall</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.004</id></mitre>
+  </rule>
+
+  <rule id="92044" level="14">
+    <if_sid>92043</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">localport=5900</field>
+    <description>Sysmon Nativo [T1562.004]: netsh adicionou regra de firewall para porta 5900 (VNC)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.004</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1548.002 — UAC Bypass chain
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92046" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\fodhelper\.EXE</field>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)(cmd|powershell|rundll32)\.EXE</field>
+    <description>Sysmon Nativo [T1548.002]: Possível UAC Bypass via fodhelper.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548.002</id></mitre>
+  </rule>
+
+  <rule id="92055" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)(ComputerDefaults|fodhelper)\.EXE</field>
+    <description>Sysmon Nativo [T1548.002]: Utilitário auto-elevado $(win.eventdata.originalFileName) pode ter sido usado para bypass de UAC</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548.002</id></mitre>
+  </rule>
+
+  <rule id="92056" level="14">
+    <if_sid>92055</if_sid>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)powershell\.EXE</field>
+    <description>Sysmon Nativo [T1548.002]: PowerShell invocou $(win.eventdata.originalFileName) para bypass de UAC</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548.002</id></mitre>
+  </rule>
+
+  <rule id="92061" level="3">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)sdclt\.exe</field>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)(\\\\cmd\.exe|\\\\powershell\.exe)</field>
+    <field name="win.eventdata.integrityLevel" type="pcre2">(?i)(medium|high)</field>
+    <description>Sysmon Nativo [T1548][T1059.003]: sdclt.exe iniciado via $(win.eventdata.parentImage) com integrity level $(win.eventdata.integrityLevel)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548</id><id>T1059.003</id></mitre>
+  </rule>
+
+  <rule id="92062" level="14">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\control\.exe</field>
+    <field name="win.eventdata.integrityLevel" type="pcre2">(?i)high</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\powershell\.exe</field>
+    <description>Sysmon Nativo [T1548][T1548.002]: PowerShell iniciado com integrity level HIGH por control.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548</id><id>T1548.002</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1218.005 — mshta.exe spawned by Office
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92047" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)mshta\.EXE</field>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)(winword|excel|powerpnt)\.EXE</field>
+    <description>Sysmon Nativo [T1218.005]: Aplicativo Office iniciou mshta.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1218.005</id></mitre>
+  </rule>
+
+  <rule id="92048" level="15">
+    <if_sid>92047</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(vbscript|javascript)</field>
+    <description>Sysmon Nativo [T1218.005][T1059]: Aplicativo Office → mshta.exe executando script inline</description>
+    <options>no_full_log</options>
+    <mitre><id>T1218.005</id><id>T1059</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1218.012 — verclsid.exe: COM payload
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92049" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)verclsid\.exe\s+/S\s+/C\s+\{</field>
+    <description>Sysmon Nativo [T1218.012]: verclsid.exe pode ter sido usado para executar payload COM</description>
+    <options>no_full_log</options>
+    <mitre><id>T1218.012</id></mitre>
+  </rule>
+
+  <rule id="92050" level="12">
+    <if_sid>92049</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)(winword|excel|powerpnt)\.EXE</field>
+    <description>Sysmon Nativo [T1218.012][T1559.001]: Aplicativo Office invocou verclsid.exe (possível COM payload)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1218.012</id><id>T1559.001</id></mitre>
+  </rule>
+
+  <!-- T1036.003 — wscript.exe renomeado -->
+  <rule id="92051" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)wscript\.exe</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)wscript\.exe</field>
+    <description>Sysmon Nativo [T1036.003][T1059.005]: Execução de cópia renomeada do wscript.exe</description>
+    <options>no_full_log</options>
+    <mitre><id>T1036.003</id><id>T1059.005</id></mitre>
+  </rule>
+
+  <!-- T1059.003 — cmd.exe iniciado por processo não padrão -->
+  <rule id="92052" level="4">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)cmd\.EXE</field>
+    <field name="win.eventdata.parentImage" type="pcre2" negate="yes">(?i)(explorer|cmd)\.EXE</field>
+    <description>Sysmon Nativo [T1059.003]: cmd.exe iniciado por processo não padrão: $(win.eventdata.parentImage)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.003</id></mitre>
+  </rule>
+
+  <!-- T1059.003 — JScript engine signature -->
+  <rule id="92053" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)\s\/b\s\/e\:jscript</field>
+    <description>Sysmon Nativo [T1059.003]: Processo iniciado com engine JScript (/b /e:jscript)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.003</id></mitre>
+  </rule>
+
+  <!-- T1059.007 — svchost netsvcs executando .js de AppData -->
+  <rule id="92054" level="14">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)svchost\.exe -k netsvcs -p</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)appdata\\\\.+\.exe.+\.js$</field>
+    <description>Sysmon Nativo [T1059.007]: Execução suspeita de .js por $(win.eventdata.image) via svchost netsvcs</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.007</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1546.011 — Application Shimming via sdbinst.exe
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92058" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)sdbinst\.EXE</field>
+    <description>Sysmon Nativo [T1546.011]: Application Compatibility Database (sdbinst.exe) iniciado</description>
+    <options>no_full_log</options>
+    <mitre><id>T1546.011</id></mitre>
+  </rule>
+
+  <rule id="92059" level="14">
+    <if_sid>92058</if_sid>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)powershell\.exe.+\-(encodedcommand|e|ea|ec|encodeda|encode|en|enco)</field>
+    <description>Sysmon Nativo [T1546.011][T1059.001]: Possível Shimming — sdbinst.exe por PowerShell encoded</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id><id>T1546.011</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1036.002 — Right-to-Left Override (RtLO)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92060" level="15">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(*UTF)\N{U+202E}</field>
+    <description>Sysmon Nativo [T1036.002]: Processo com caractere RtLO (U+202E) no parentImage</description>
+    <options>no_full_log</options>
+    <mitre><id>T1036.002</id></mitre>
+  </rule>
+
+  <rule id="92064" level="15">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(*UTF)\N{U+202E}</field>
+    <description>Sysmon Nativo [T1036.002][T1204.002]: Binário executado com caractere RtLO (mascaramento malicioso)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1036.002</id><id>T1204.002</id></mitre>
+  </rule>
+
+  <!-- T1070.004 — sdelete.exe -->
+  <rule id="92063" level="6">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)sdelete\.exe</field>
+    <description>Sysmon Nativo [T1070.004]: Deleção segura por $(win.eventdata.originalFileName). Comando: $(win.eventdata.commandLine)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1070.004</id></mitre>
+  </rule>
+
+  <!-- T1059.001 — PS de Temp/SysWOW64 + compressão -->
+  <rule id="92065" level="6">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)Windows\\\\Temp.+\.(exe|dll)</field>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)PowerShell\.exe</field>
+    <description>Sysmon Nativo [T1059.001]: PowerShell iniciado por binário em Windows\Temp: $(win.eventdata.parentImage)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92066" level="4">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\powershell\.exe</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)Windows\\\\(SysWOW64|Temp).+\.exe</field>
+    <description>Sysmon Nativo [T1059.001]: Binário $(win.eventdata.image) em localização suspeita por $(win.eventdata.parentImage)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92067" level="6">
+    <if_sid>92066</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\.(zip|7z|rar)</field>
+    <description>Sysmon Nativo [T1560.001]: $(win.eventdata.image) por $(win.eventdata.parentImage) criou arquivo comprimido</description>
+    <options>no_full_log</options>
+    <mitre><id>T1560.001</id></mitre>
+  </rule>
+
+  <!-- T1569.002 — PsExec -->
+  <rule id="92068" level="3">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)PSEXESVC\.exe</field>
+    <description>Sysmon Nativo [T1569.002]: PsExec utilizado para executar: $(win.eventdata.commandLine)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1569.002</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1047 — WMI chain
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92069" level="0">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\\\WmiPrvSE\.exe</field>
+    <description>Sysmon Nativo [T1047]: WMI (WmiPrvSE) iniciou processo</description>
+    <options>no_full_log</options>
+    <mitre><id>T1047</id></mitre>
+  </rule>
+
+  <rule id="92070" level="6">
+    <if_sid>92069</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)PowerShell\.EXE</field>
+    <description>Sysmon Nativo [T1047][T1059.001]: WMI criou processo PowerShell</description>
+    <options>no_full_log</options>
+    <mitre><id>T1047</id><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="92071" level="12">
+    <if_sid>92070</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)powershell\.exe.+\-(encodedcommand|e|ea|ec|encodeda|encode|en|enco)</field>
+    <description>Sysmon Nativo [T1047][T1059.001]: PowerShell criado via WMI executou comando Base64 encoded</description>
+    <options>no_full_log</options>
+    <mitre><id>T1047</id><id>T1059.001</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1140 — certutil -decode chain
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92072" level="4">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)certutil\.exe.+\-decode</field>
+    <description>Sysmon Nativo [T1140]: certutil.exe decodificando arquivo</description>
+    <options>no_full_log</options>
+    <mitre><id>T1140</id></mitre>
+  </rule>
+
+  <rule id="92073" level="6">
+    <if_sid>92072</if_sid>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)powershell\.exe</field>
+    <description>Sysmon Nativo [T1140]: PowerShell executando certutil para decodificar arquivo</description>
+    <options>no_full_log</options>
+    <mitre><id>T1140</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1105 — Ingress Tool Transfer
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92074" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)(curl|wget)\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\-(o|out|outfile).+\.(dll|exe)</field>
+    <description>Sysmon Nativo [T1105]: $(win.eventdata.originalFileName) criando binário via download</description>
+    <options>no_full_log</options>
+    <mitre><id>T1105</id></mitre>
+  </rule>
+
+  <rule id="92075" level="12">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)certutil\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\-urlcache.+\.(dll|exe)</field>
+    <description>Sysmon Nativo [T1105]: certutil.exe fazendo download de binário via urlcache</description>
+    <options>no_full_log</options>
+    <mitre><id>T1105</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1546 / T1218 — rundll32 chain
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92076" level="6">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)RUNDLL32\.EXE</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\.lock</field>
+    <description>Sysmon Nativo [T1546][T1218]: rundll32 executando arquivo .lock (possível persistência)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1546</id><id>T1218</id></mitre>
+  </rule>
+
+  <rule id="92081" level="15">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)RUNDLL32\.EXE</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\.(html|htm|txt|png|jpg|pdf)".*,#</field>
+    <description>Sysmon Nativo [T1218.011]: rundll32 executando payload com extensão não-DLL suspeita</description>
+    <options>no_full_log</options>
+    <mitre><id>T1218.011</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1518.001 — AV Discovery via WMI (migrado de if_sid>61603)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92077" level="10">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)SecurityCenter2.*AntiVirusProduct.*Get</field>
+    <description>Sysmon Nativo [T1518.001]: WMI utilizado para descoberta de produto antivírus (SecurityCenter2)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1518.001</id></mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1204.002 — Execução via ISO montado (migrado de if_sid>61603)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="92078" level="10">
+    <if_sid>92000</if_sid>
+    <field name="win.eventdata.currentDirectory" type="pcre2">^[D-Zd-z]:\\\\$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\cmd\.exe</field>
+    <description>Sysmon Nativo [T1204.002]: cmd.exe executado a partir de drive não padrão (possível execução via ISO montado)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1204.002</id></mitre>
+  </rule>
+
+  <rule id="92079" level="10">
+    <if_sid>92078</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)rundll32</field>
+    <description>Sysmon Nativo [T1204.002][T1218.011]: rundll32 executado via ISO montado em drive não padrão</description>
+    <options>no_full_log</options>
+    <mitre><id>T1204.002</id><id>T1218.011</id></mitre>
+  </rule>
+
+</group>
