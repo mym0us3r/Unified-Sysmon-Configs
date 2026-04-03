@@ -1,0 +1,176 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  03/27/2026 Friday :)
+
+  Sysmon Event ID 7 rules: 92150 - 92199
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 7: Image Load - DLL load detection with vaultcli.dll tiered architecture
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  MIGRATION NOTES:
+    ANCHOR FIX: if_sid>60000 replaced by if_group>sysmon_event7.
+    if_group references the runtime group tag assigned by rule 61609
+    (in 0595-win-sysmon_rules.xml). No load-order dependency.
+
+  RULE 92153 - TIERED ARCHITECTURE (vaultcli.dll):
+    vaultcli.dll (Credential Vault Client Library) is a high-value target
+    for credential dumping (T1555, T1555.004 - Windows Credential Manager).
+    Techniques: Mimikatz vault::list, vault::cred and custom tooling.
+
+    Detection is tiered by loading process path risk:
+
+    92153 level=0  (SILENT BASE)
+      Catches all vaultcli.dll loads. Silences known-good OS processes
+      by their FULL PATH. Exclusions confirmed via live Wazuh 4.14.4
+      archives.json on Windows 11 24H2+ (KB5077241):
+        - VaultCmd.exe         : legitimate vault management tool
+        - backgroundTaskHost   : Windows background task host
+        - taskhostw / taskhost : Windows task host
+        - svchost / lsass / explorer : core Windows processes
+        - LogonUI.exe          : Windows logon interface
+        - CredentialUIBroker   : Windows credential UI component
+        - SearchHost.exe       : Windows 11 Search UI (SSO tokens, full path)
+        - RuntimeBroker.exe    : UWP app permissions broker (full path)
+
+    92158 level=15 (CRITICAL - child of 92153)
+      vaultcli.dll loaded by a process whose IMAGE path is in a
+      high-risk location: Temp, AppData, Users\Public, Downloads.
+      Near-zero false positives. Likely active credential dumping.
+
+    92159 level=10 (ALERT - child of 92153)
+      vaultcli.dll loaded by a third-party process NOT in Windows
+      system paths. Catches MobaXterm, PuTTY, RDP clients that
+      legitimately access the Credential Manager. Maintains full
+      visibility. Analyst should verify if access is expected.
+-->
+<group name="sysmon,sysmon_eid7_detections,windows,">
+
+  <!-- ================================================================
+       BASE ANCHOR - EID 7 (Image Load)
+  ================================================================ -->
+  <rule id="92150" level="0">
+    <if_group>sysmon_event7</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Sysmon Native [EID 7]: Image loaded by $(win.eventdata.image)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- T1059.001 - PowerShell automation library loaded by suspicious process -->
+  <rule id="92151" level="12">
+    <if_sid>92150</if_sid>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)System\.Management\.Automation\.dll</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\Microsoft\.NET\\.+\\\\csc\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)(devenv|node|SSMS|VSLauncher)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)(sdiagnhost|SmartAudio3)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)(pwsh\.dll|powershell(_ise)?\.exe)$</field>
+    <description>Sysmon Native [T1059.001]: Binary loaded PowerShell automation library - possible unmanaged PowerShell execution by suspicious process</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <!-- T1210 - PrintNightmare: DLL loaded by spooler service -->
+  <rule id="92152" level="6">
+    <if_sid>92150</if_sid>
+    <field name="win.eventdata.imageLoaded" type="pcre2">(?i)[c-z]:\\\\Windows\\\\System32\\\\spool\\\\drivers</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\spoolsv\.exe$</field>
+    <description>Sysmon Native [T1210]: Printer spooler service loaded a DLL - possible PrintNightmare exploit (CVE-2021-34527)</description>
+    <options>no_full_log</options>
+    <mitre><id>T1210</id></mitre>
+  </rule>
+
+  <!-- ================================================================
+       T1555 / T1555.004 - vaultcli.dll TIERED DETECTION
+       Windows Credential Manager credential dumping via Vault API.
+
+       TIER 0 (SILENT BASE): vaultcli.dll loaded - OS exclusions applied.
+       Exclusions use FULL PATH where possible to prevent bypass via
+       process name spoofing. Confirmed on Windows 11 24H2+ (KB5077241).
+  ================================================================ -->
+  <rule id="92153" level="0">
+    <if_sid>92150</if_sid>
+    <field name="win.eventdata.imageLoaded" type="pcre2">(?i)vaultcli\.dll</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\\\VaultCmd\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\\\(svchost|lsass|explorer|LogonUI|CredentialUIBroker)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\\\(backgroundTaskHost|taskhostw?|winlogon)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\SystemApps\\\\.+\\\\SearchHost\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\System32\\\\RuntimeBroker\.exe$</field>
+    <description>Sysmon Native [T1555]: vaultcli.dll load detected - evaluating process context</description>
+    <options>no_full_log</options>
+    <mitre><id>T1555</id></mitre>
+  </rule>
+
+  <!-- ================================================================
+       TIER 1 (CRITICAL level 15) - child of 92153
+       vaultcli.dll loaded by process in HIGH-RISK path.
+       Temp, AppData, Users\Public, Downloads.
+       Near-zero false positives. Treat as active credential dumping
+       until proven otherwise.
+  ================================================================ -->
+  <rule id="92158" level="15">
+    <if_sid>92153</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)[c-z]:\\\\(Users\\\\.+\\\\AppData\\\\(Local\\\\Temp|Roaming)|Windows\\\\Temp|Users\\\\Public|Users\\\\.+\\\\Downloads)</field>
+    <description>Sysmon Native [T1555.004]: CRITICAL - vaultcli.dll loaded by process in high-risk path $(win.eventdata.image) - likely credential dumping</description>
+    <options>no_full_log</options>
+    <mitre><id>T1555</id><id>T1555.004</id></mitre>
+  </rule>
+
+  <!-- ================================================================
+       TIER 2 (ALERT level 10) - child of 92153
+       vaultcli.dll loaded by third-party process outside Windows paths.
+       Catches MobaXterm, PuTTY, SSH/RDP clients that legitimately
+       access Windows Credential Manager.
+       Analyst action: verify process is known and expected on host.
+  ================================================================ -->
+  <rule id="92159" level="10">
+    <if_sid>92153</if_sid>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\(Windows|Program Files\\\\Windows|ProgramData\\\\Microsoft\\\\Windows)</field>
+    <description>Sysmon Native [T1555.004]: vaultcli.dll loaded by third-party process $(win.eventdata.image) - verify if Credential Manager access is expected on this host</description>
+    <options>no_full_log</options>
+    <mitre><id>T1555</id><id>T1555.004</id></mitre>
+  </rule>
+
+  <!-- T1053.005 - taskschd.dll: possible scheduled task creation for delayed execution -->
+  <rule id="92154" level="4">
+    <if_sid>92150</if_sid>
+    <field name="win.eventdata.imageLoaded" type="pcre2">(?i)taskschd\.dll</field>
+    <description>Sysmon Native [T1053.005]: Process loaded taskschd.dll module - may be used to create delayed malware execution via scheduled task</description>
+    <options>no_full_log</options>
+    <mitre><id>T1053.005</id></mitre>
+  </rule>
+
+  <rule id="92155" level="12">
+    <if_sid>92154</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\mshta\.exe$</field>
+    <description>Sysmon Native [T1053.005]: mshta.exe loaded taskschd.dll module - possible creation of delayed malicious execution via scheduled task</description>
+    <options>no_full_log</options>
+    <mitre><id>T1053.005</id></mitre>
+  </rule>
+
+  <!-- T1059.005 - Office application loading vbeui.dll (macro execution) -->
+  <rule id="92156" level="12">
+    <if_sid>92150</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\(winword|excel|powerpnt)\.EXE</field>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)VBEUI\.DLL</field>
+    <description>Sysmon Native [T1059.005]: Office application loaded vbeui.dll module - may be used to execute scripting/macro code</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.005</id></mitre>
+  </rule>
+
+  <!-- T1546.011 - DLL loaded from Windows\Temp directory -->
+  <rule id="92157" level="6">
+    <if_sid>92150</if_sid>
+    <field name="win.eventdata.imageLoaded" type="pcre2">(?i)[c-z]:\\\\Windows\\\\Temp\\\\.+\.dll</field>
+    <description>Sysmon Native [T1546.011]: Process $(win.eventdata.image) loaded DLL $(win.eventdata.imageLoaded) from Windows Temp directory</description>
+    <options>no_full_log</options>
+    <mitre><id>T1546.011</id></mitre>
+  </rule>
+
+</group>
