@@ -523,6 +523,22 @@ EID 4688 (Rule 67027) firing in parallel - dual provider visibility confirmed �
 
 ---
 
+### ✅ Native Sysmon Rule Redesign for Windows Native Sysmon
+
+```text
+0595  EID 1:  Process Creation - Infrastructure routing and process anomaly detection
+0800  EID 1:  Process Creation - Native anchor + full behavioral detection chain
+0810  EID 3:  Network Connection - Suspicious outbound connection detection
+0820  EID 7:  Image Load - DLL load detection with vaultcli.dll tiered architecture
+0830  EID 11: File Create - Suspicious file creation in high-risk paths
+0850  EID 1:  Process Creation - Parent/Image anomaly detection chain
+0860  EID 13: Registry Value Set - Persistence and defense evasion via registry
+0870  EID 8:  CreateRemoteThread - Cross-process injection and lateral movement
+0945  EID 10: Process Access - LSASS and sensitive process memory access
+0950  EID 20: WmiEvent (Consumer Activity) - WMI-based persistence detection
+```
+---
+
 ## 🤝 Acknowledgments & Credits
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
