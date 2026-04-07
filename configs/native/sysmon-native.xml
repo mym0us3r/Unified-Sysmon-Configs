@@ -7,12 +7,12 @@
     File         : sysmon-win11-native-wazuh.xml
     Author       : m0us3r (@mym0us3r)
     Repository   : https://github.com/mym0us3r/Unified-Sysmon-Configs
-    Path         : /configs/native/sysmon-win11-native-wazuh.xml
+    Path         : /configs/native/sysmon-native.xml
     License      : GPL-3.0
     
     Version      : 1.1
     Released     : 2026-03-23
-    Last Updated : 2026-03-25
+    Last Updated : 2026-04-07
  
     ============================================================================
     Platform & Environment
@@ -94,12 +94,12 @@
     ENABLE      : Enable-WindowsOptionalFeature -Online -FeatureName Sysmon
  
     INSTALL     : sysmon -i
-    APPLY       : sysmon -c sysmon-win11-native-wazuh.xml
+    APPLY       : sysmon -c sysmon-native.xml
  
     VALIDATE    : .\Check-SysmonHealth.ps1 -ExportReport
                   /scripts/Check-SysmonHealth.ps1 (included in this repo)
  
-    VERIFY HASH : (Get-FileHash "C:\Windows\System32\Sysmon\sysmon-win11-native-wazuh.xml" -Algorithm SHA256).Hash
+    VERIFY HASH : (Get-FileHash "C:\Windows\System32\Sysmon\sysmon-native.xml" -Algorithm SHA256).Hash
                   Cross-reference with EID 16 in Sysmon/Operational log.
  
     WAZUH RULES : /ruleset/rules/wazuh-server-4.14/
