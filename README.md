@@ -163,9 +163,10 @@ Unified-Sysmon-Configs/
 │
 ├── configs/
 │   ├── native/                          # Windows 11 24H2+ · Schema 4.91
-│   │   └── sysmon-win11-native-wazuh.xml
+│   │   └── sysmon-native.xml
 │   └── legacy/                          # Windows 7+ · Sysinternals standalone
-│       └── sysmonconfig-export.xml
+│       ├── sysmonconfig-export.xml      # SwiftOnSecurity baseline
+│       └── sysmonconfig.xml             # olafhartong/sysmon-modular
 │
 ├── ruleset/
 │   └── rules/
@@ -190,10 +191,13 @@ Unified-Sysmon-Configs/
 └── docs/                                # Technical guides, screenshots, PDF
 ```
 
-| Path | Target Platform | Schema | Operator Style |
-|---|---|---|---|
-| `configs/native/` | Windows 11 24H2+ · Server 2025 | 4.91 | `contains any`, `excludes any`, `is any`, `groupRelation="and"` |
-| `configs/legacy/` | Windows 7+ · Server 2008 R2+ | 4.50 | Standard single-value conditions |
+| File | Lines | Schema | Operator Style | Model |
+|---|---|---|---|---|
+| `configs/native/sysmon-native.xml` | +400 | 4.91 | `groupRelation="and"`, `contains any`, `excludes any` | Filter at the source |
+| `configs/legacy/sysmonconfig-export.xml` | +1.100 | 4.50 | Single-value conditions | Collect-first, filter-later |
+| `configs/legacy/sysmonconfig.xml` | +2.700 | 4.50 | Single-value conditions | Collect-first, filter-later |
+
+> The native config is 4-7x smaller not because it covers fewer threats, but because `groupRelation="and"` (schema 4.91) eliminates noise at the point of capture. The same EID that requires 50+ exclusion lines in a legacy config is resolved in 10 lines with AND logic in the native config.
 
 **Wazuh ruleset sync:**
 
@@ -508,21 +512,6 @@ The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 
 ---
 
-### ✅ Production Validation
-
-```text
-Manager  : Wazuh 4.14.4 (Ubuntu)
-Agent    : Win-Dell-10 · Windows 11 24H2+ (KB5077241)
-Analyzer : wazuh-analysisd -t → 0 warnings, exit 0
-
-[05:12:26] Rule 92027 | L4  | EID 1 | T1059.001 · PowerShell spawned PowerShell
-[05:12:46] Rule 92057 | L12 | EID 1 | T1059.001 · PowerShell EncodedCommand detected
-[05:14:31] Rule 92057 | L12 | EID 1 | T1059.001 · PowerShell EncodedCommand detected
-EID 4688 (Rule 67027) firing in parallel - dual provider visibility confirmed ✅
-```
-
----
-
 ### ✅ Native Sysmon Rule Redesign for Windows Native Sysmon
 
 ```text
@@ -537,6 +526,22 @@ EID 4688 (Rule 67027) firing in parallel - dual provider visibility confirmed �
 0945  EID 10: Process Access - LSASS and sensitive process memory access
 0950  EID 20: WmiEvent (Consumer Activity) - WMI-based persistence detection
 ```
+
+---
+
+### ✅ Production Validation
+
+```text
+Manager  : Wazuh 4.14.4 (Ubuntu)
+Agent    : Win-Dell-10 · Windows 11 24H2+ (KB5077241)
+Analyzer : wazuh-analysisd -t → 0 warnings, exit 0
+
+[05:12:26] Rule 92027 | L4  | EID 1 | T1059.001 · PowerShell spawned PowerShell
+[05:12:46] Rule 92057 | L12 | EID 1 | T1059.001 · PowerShell EncodedCommand detected
+[05:14:31] Rule 92057 | L12 | EID 1 | T1059.001 · PowerShell EncodedCommand detected
+EID 4688 (Rule 67027) firing in parallel - dual provider visibility confirmed ✅
+```
+
 ---
 
 ## 🤝 Acknowledgments & Credits
