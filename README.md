@@ -118,14 +118,14 @@ Instead of merely flagging tools, this configuration focuses on identifying **in
 ### Native approach (behavioral, low noise)
 
 ```xml
-<Rule name="T1059.001-PowerShell-Execution" groupRelation="and">
-  <OriginalFileName condition="contains any">
-    powershell.exe;pwsh.exe;powershell_ise.exe
-  </OriginalFileName>
-  <CommandLine condition="contains any">
-    -enc;-nop;-w hidden;IEX;Invoke-Expression;DownloadString;FromBase64String;bypass;-ExecutionPolicy
-  </CommandLine>
-</Rule>
+<RuleGroup name="ProcessCreate-Includes" groupRelation="or">
+  <ProcessCreate onmatch="include">
+    <Rule name="T1059.001-PowerShell-Execution" groupRelation="and">
+      <OriginalFileName condition="contains any">powershell.exe;pwsh.exe;powershell_ise.exe</OriginalFileName>
+      <CommandLine condition="contains any">-enc;-nop;-w hidden;IEX;Invoke-Expression;DownloadString;FromBase64String;bypass;-ExecutionPolicy</CommandLine>
+    </Rule>
+  </ProcessCreate>
+</RuleGroup>
 ```
 
 **The gain:** Requires **both** conditions simultaneously via `groupRelation="and"` - fires only when PowerShell is launched with known evasion or obfuscation flags.
@@ -173,7 +173,7 @@ Unified-Sysmon-Configs/
 │       ├── wazuh-server-4.14/           # Production-verified rules (live environment)
 │       ├── wazuh-official-repo/         # Alignment with official Wazuh content
 │       └── native-sysmon-rewrite-by-m0us3r/   # ← NEW · Full Native Sysmon rewrite
-│           ├── 0595-win-sysmon_rules.xml        #   52 rules · EID 1-23 infra + anomaly
+│           ├── 0595-win-sysmon_rules.xml        #   52 rules · EID 1-23 group tag definitions + routing
 │           ├── 0800-sysmon_id_1.xml             #   83 rules · EID 1 Process Creation
 │           ├── 0810-sysmon_id_3.xml             #   11 rules · EID 3 Network Connection
 │           ├── 0820-sysmon_id_7.xml             #   10 rules · EID 7 Image Load
@@ -356,7 +356,7 @@ Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion - te
 |---|---|
 | **Provider** | `Microsoft-Windows-Sysmon` (Official Windows Component) |
 | **Key fields** | `data.win.eventdata.targetFilename`, `data.win.eventdata.image` |
-| **Rule alignment** | `/ruleset/rules/wazuh-server-4.14/` |
+| **Rule alignment** | `/ruleset/rules/native-sysmon-rewrite-by-m0us3r/` |
 | **Detection scope** | Executable drops, PowerShell execution, lateral movement, persistence |
 
 ---
@@ -376,7 +376,7 @@ Complete rewrite of the Wazuh Sysmon detection ruleset from Legacy Sysinternals 
 
 ### 🧱 The Core Problem - Why the Migrated Rules Fail on 24H2+
 
-Two independent failure modes — both producing silent, zero-alert results.
+Two independent failure modes - both producing silent, zero-alert results.
 
 **Failure 1 - Load order:** The original `0330-sysmon_rules.xml` used `sysmon.*` field names from a pre-Wazuh 3.8.0 decoder (`if_sid>18100`). That file was correctly rewritten to use `win.eventdata.*` fields and `if_group>sysmon_event1`. However, it also referenced `if_sid>92000` (defined in `0800`), and because `0330` loads before `0800` alphabetically, Wazuh discards those rules silently at load time. Fix: rename to `0850` so it loads after `0800`.
 
@@ -477,7 +477,7 @@ This rewrite does **not** replace or suppress EID 4688 (Security-Auditing). Both
 | Provider | Rule | Level | Value |
 |---|---|---|---|
 | `Microsoft-Windows-Security-Auditing` | 67027 | 3 | Process telemetry - always-on baseline |
-| `Microsoft-Windows-Sysmon` | 92000–92082 | 3–15 | MITRE-aligned behavioral intelligence |
+| `Microsoft-Windows-Sysmon` | 92000-92083 (0800) · 184666-184777 (0850) | 3-15 | MITRE-aligned behavioral intelligence |
 
 > **EID 4688** = *"who was born"* · **Sysmon EID 1** = *"what it is doing and why it matters"*
 
