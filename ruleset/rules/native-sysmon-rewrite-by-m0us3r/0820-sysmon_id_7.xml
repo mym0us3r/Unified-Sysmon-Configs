@@ -2,6 +2,7 @@
   Reference: Copyright (C) 2015, Wazuh Inc.
   Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
   03/27/2026 Friday :)
+  Updated: 04/26/2026 - Security fix: full-path exclusions enforced on rule 92153
 
   Sysmon Event ID 7 rules: 92150 - 92199
   Rewritten for Sysmon Native (Windows 11 24H2+)
@@ -34,16 +35,26 @@
         - VaultCmd.exe         : legitimate vault management tool
         - backgroundTaskHost   : Windows background task host
         - taskhostw / taskhost : Windows task host
-        - svchost / lsass / explorer : core Windows processes
-        - LogonUI.exe          : Windows logon interface
-        - CredentialUIBroker   : Windows credential UI component
+        - svchost / lsass / explorer : core Windows processes (FULL PATH)
+        - LogonUI.exe          : Windows logon interface (FULL PATH)
+        - CredentialUIBroker   : Windows credential UI component (FULL PATH)
         - SearchHost.exe       : Windows 11 Search UI (SSO tokens, full path)
         - RuntimeBroker.exe    : UWP app permissions broker (full path)
+
+      SECURITY FIX (04/26/2026):
+        Previous version used name-only exclusions (e.g. \\\\svchost\.exe$).
+        This created a bypass surface: any malicious binary named svchost.exe
+        in any path (AppData\Temp, Users\Public, etc.) would inherit the
+        exclusion and never reach Tier 1 (level 15).
+        All exclusions now enforce FULL PATH under Windows system directories.
+        Validated via production test: svchost.exe in AppData\Local\Temp
+        loading vaultcli.dll now correctly escalates to Tier 1 (level 15).
 
     92158 level=15 (CRITICAL - child of 92153)
       vaultcli.dll loaded by a process whose IMAGE path is in a
       high-risk location: Temp, AppData, Users\Public, Downloads.
-      Near-zero false positives. Likely active credential dumping.
+      Near-zero false positives. Treat as active credential dumping
+      until proven otherwise.
 
     92159 level=10 (ALERT - child of 92153)
       vaultcli.dll loaded by a third-party process NOT in Windows
@@ -91,15 +102,20 @@
        Windows Credential Manager credential dumping via Vault API.
 
        TIER 0 (SILENT BASE): vaultcli.dll loaded - OS exclusions applied.
-       Exclusions use FULL PATH where possible to prevent bypass via
-       process name spoofing. Confirmed on Windows 11 24H2+ (KB5077241).
+       ALL exclusions enforce FULL PATH to prevent process name spoofing.
+       A malicious binary named svchost.exe in AppData\Temp will NOT
+       inherit these exclusions and will escalate to Tier 1 (level 15).
+       Confirmed on Windows 11 24H2+ (KB5077241).
   ================================================================ -->
   <rule id="92153" level="0">
     <if_sid>92150</if_sid>
     <field name="win.eventdata.imageLoaded" type="pcre2">(?i)vaultcli\.dll</field>
-    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\\\VaultCmd\.exe$</field>
-    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\\\(svchost|lsass|explorer|LogonUI|CredentialUIBroker)\.exe$</field>
-    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\\\(backgroundTaskHost|taskhostw?|winlogon)\.exe$</field>
+    <!-- Full path exclusions - prevents bypass via process name spoofing -->
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\System32\\\\VaultCmd\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\System32\\\\(svchost|lsass|explorer|LogonUI|CredentialUIBroker)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\System32\\\\(backgroundTaskHost|taskhostw?|winlogon)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\SysWOW64\\\\(svchost|lsass|explorer|LogonUI|CredentialUIBroker)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\SysWOW64\\\\(backgroundTaskHost|taskhostw?|winlogon)\.exe$</field>
     <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\SystemApps\\\\.+\\\\SearchHost\.exe$</field>
     <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)[c-z]:\\\\Windows\\\\System32\\\\RuntimeBroker\.exe$</field>
     <description>Sysmon Native [T1555]: vaultcli.dll load detected - evaluating process context</description>
