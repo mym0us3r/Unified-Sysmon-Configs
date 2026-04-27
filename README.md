@@ -185,10 +185,13 @@ Unified-Sysmon-Configs/
 │           └── 0950-sysmon_id_20.xml            #    3 rules · EID 20 WMI Consumer
 │                                                #  232 rules total · 8 EIDs covered
 │
-├── scripts/
-│   └── Check-SysmonHealth.ps1           # 8-layer automated diagnostic script
+├── adv_simulation/                      # Adversary Simulation · Native vs Legacy
+│   └── native_vs_legacy.md             # Comparative detection validation report
 │
-└── docs/                                # Technical guides, screenshots, PDF
+├── scripts/
+│   └── Check-SysmonHealth.ps1          # 8-layer automated diagnostic script
+│
+└── docs/                               # Technical guides, screenshots, PDF
 ```
 
 | File | Lines | Schema | Operator Style | Model |
