@@ -552,6 +552,7 @@ This project is built upon the foundational work of the cybersecurity community 
 - **[Microsoft Learn - Enable Sysmon](https://learn.microsoft.com/pt-br/windows/security/operating-system-security/sysmon/how-to-enable-sysmon)** - Official guide for native Sysmon enablement
 - **[Native Sysmon Announcement](https://techcommunity.microsoft.com/blog/windows-itpro-blog/native-sysmon-functionality-coming-to-windows/4468112)** - Microsoft Tech Community (Mark Russinovich)
 - **[KB5077241](https://www.catalog.update.microsoft.com/Search.aspx?q=KB5077241)** - Official update catalog entry for Sysmon Native integration
+- **[Understanding Sysmon configuration files](https://learn.microsoft.com/en-us/windows/security/operating-system-security/sysmon/sysmon-configuration-files)** - Microsoft Windows Security
 - **[Olaf Hartong](https://github.com/olafhartong/sysmon-modular)** - Author of *Sysmon-Modular*, key reference for structured configurations and MITRE ATT&CK mapping
 - **[SwiftOnSecurity](https://github.com/SwiftOnSecurity/sysmon-config)** - The legendary *sysmon-config* that pioneered the baseline for endpoint visibility
 - **[TrustedSec - SysmonCommunityGuide](https://github.com/trustedsec/SysmonCommunityGuide)** - Deep technical reference by Carlos Perez
