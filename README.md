@@ -1,4 +1,4 @@
-# 🛡️ Unified Sysmon Configs
+# Unified Sysmon Configs
 
 **Enterprise-grade telemetry orchestration for Windows (Native & Legacy).  
 Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat hunting.**
@@ -13,7 +13,7 @@ Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat huntin
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
 - [Strategic Overview](#-strategic-overview)
 - [Behavioral Sensor Architecture](#-behavioral-sensor-architecture)
@@ -29,7 +29,7 @@ Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat huntin
 
 ---
 
-## 💡 Strategic Overview
+## Strategic Overview
 
 Endpoint visibility is the cornerstone of modern Detection Engineering. With the release of **Windows 11 (24H2+)**, Sysmon has transitioned into a **Native OS Feature**, fundamentally changing how security teams manage lifecycle, updates, and driver stability.
 
@@ -52,7 +52,7 @@ Legacy Sysmon configurations were traditionally designed around a **"collect-fir
 
 ---
 
-## 📐 Behavioral Sensor Architecture
+## Behavioral Sensor Architecture
 
 <p align="center">
   <img src="https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon_sensor_arch.jpg?raw=true" alt="Unified Sysmon Configs - Behavioral Sensor Architecture" width="1024px">
@@ -77,7 +77,7 @@ Legacy Sysmon configurations were traditionally designed around a **"collect-fir
 
 ---
 
-## 🎯 Detection Philosophy
+## Detection Philosophy
 
 Instead of merely flagging tools, this configuration focuses on identifying **intent and behavior**:
 
@@ -99,7 +99,7 @@ Instead of merely flagging tools, this configuration focuses on identifying **in
 
 ---
 
-## 🔬 Practical Example: Process Creation (EID 1)
+## Practical Example: Process Creation (EID 1)
 
 > **Scenario:** Detecting PowerShell abuse with obfuscation flags - T1059.001
 
@@ -156,7 +156,7 @@ Instead of merely flagging tools, this configuration focuses on identifying **in
 
 ---
 
-## 🗂️ Repository Structure
+## Repository Structure
 
 ```
 Unified-Sysmon-Configs/
@@ -194,8 +194,8 @@ Unified-Sysmon-Configs/
 | File | Lines | Schema | Operator Style | Model |
 |---|---|---|---|---|
 | `configs/native/sysmon-native.xml` | +400 | 4.91 | `groupRelation="and"`, `contains any`, `excludes any` | Filter at the source |
-| `configs/legacy/sysmonconfig-export.xml` | +1.100 | 4.50 | Single-value conditions | Collect-first, filter-later |
-| `configs/legacy/sysmonconfig.xml` | +2.700 | 4.50 | Single-value conditions | Collect-first, filter-later |
+| `configs/legacy/sysmonconfig-export.xml` | +1.100 | 4.50 | OR-based include lists (`groupRelation="and"` supported since schema 4.2 but not applied in this file) | Collect-first, filter-later |
+| `configs/legacy/sysmonconfig.xml` | +2.700 | 4.90 | OR-based include lists (`groupRelation="and"` supported since schema 4.2 but not applied for these scenarios) | Collect-first, filter-later |
 
 > The native config is 4-7x smaller not because it covers fewer threats, but because `groupRelation="and"` (schema 4.91) eliminates noise at the point of capture. The same EID that requires 50+ exclusion lines in a legacy config is resolved in 10 lines with AND logic in the native config.
 
@@ -215,7 +215,7 @@ systemctl restart wazuh-manager
 
 ---
 
-## 📘 Featured Documentation: Sysmon as a Native Resource
+## Featured Documentation: Sysmon as a Native Resource
 
 <p align="center">
   <a href="https://github.com/mym0us3r/Unified-Sysmon-Configs/blob/main/docs/sysmon%20native.pdf">
@@ -234,7 +234,7 @@ Key insights from the guide:
 
 ---
 
-## 🔍 Pre-Deployment & Health Checks
+## Pre-Deployment & Health Checks
 
 Verify the Sysmon Native state using multi-layer validation before applying any configuration.
 
@@ -308,7 +308,7 @@ eventvwr.msc → Applications and Services Logs → Microsoft → Windows → Sy
 
 ---
 
-## 🩺 Automated Health Audit (Recommended)
+## Automated Health Audit (Recommended)
 
 For deep and automated telemetry validation, use the senior diagnostic script included in `/scripts`. It performs an **8-layer scan** - from binary integrity and digital signature verification to real-time event sampling and registry validation.
 
@@ -344,7 +344,7 @@ powershell.exe -ExecutionPolicy Bypass -File ".\Check-SysmonHealth.ps1" -ExportR
 
 ---
 
-## 📊 Wazuh Discover: Native Sysmon Integration
+## Wazuh Discover: Native Sysmon Integration
 
 Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion - telemetry captured, decoded, and indexed by the Wazuh Manager.
 
@@ -374,13 +374,13 @@ Complete rewrite of the Wazuh Sysmon detection ruleset from Legacy Sysinternals 
 
 ---
 
-### 🧱 The Core Problem - Why the Migrated Rules Fail on 24H2+
+### The Core Problem - Why the Migrated Rules Fail on 24H2+
 
 Two independent failure modes - both producing silent, zero-alert results.
 
 **Failure 1 - Load order:** The original `0330-sysmon_rules.xml` used `sysmon.*` field names from a pre-Wazuh 3.8.0 decoder (`if_sid>18100`). That file was correctly rewritten to use `win.eventdata.*` fields and `if_group>sysmon_event1`. However, it also referenced `if_sid>92000` (defined in `0800`), and because `0330` loads before `0800` alphabetically, Wazuh discards those rules silently at load time. Fix: rename to `0850` so it loads after `0800`.
 
-> **Important clarification:** `win.eventdata.*` fields are not exclusive to Sysmon Native. They have been available with Legacy Sysmon since Wazuh 3.8.0, when the agent is configured with `log_format>eventchannel`. What KB5077241 changed was the **deployment model** (Sysinternals binary to Windows Optional Feature), the **schema version** (4.50 to 4.91 with new operators like `groupRelation="and"`), and the **lifecycle management** (manual updates to Windows Update). The fields and the decoder remain the same.
+> **Important clarification:** `win.eventdata.*` fields are not exclusive to Sysmon Native. They have been available with Legacy Sysmon since Wazuh 3.8.0, when the agent is configured with `log_format>eventchannel`. What KB5077241 changed was the **deployment model** (Sysinternals binary to Windows Optional Feature), the **schema version** (4.50 to 4.91, unlocking new capabilities including extended OriginalFileName coverage and nested rule grouping), and the **lifecycle management** (manual updates to Windows Update). The fields and the decoder remain the same.
 
 **Failure 2 - Runtime evaluation path:** All attempts using `if_sid>60000` as a base anchor for the new native detection rules failed silently in production. The Wazuh rule engine walks the tree **depth-first** and stops at rule `61603` (EID dispatcher), never reaching a sibling branch anchored at `60000`.
 
@@ -400,7 +400,7 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 
 ---
 
-### 📊 Rule Count - Legacy vs Native
+### Rule Count - Legacy vs Native
 
 | File | Legacy | Native | Delta | EID | Coverage |
 |---|---|---|---|---|---|
@@ -420,7 +420,7 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 
 ---
 
-### 📁 File Naming - Load Order Is Critical
+### File Naming - Load Order Is Critical
 
 Wazuh loads rules alphabetically. The group tag `sysmon_event1` is registered when rule `61603` is processed inside `0595`. Any file referencing `if_group>sysmon_event1` **must load after `0595`**.
 
@@ -441,7 +441,7 @@ Wazuh loads rules alphabetically. The group tag `sysmon_event1` is registered wh
 
 ---
 
-### 🔐 vaultcli.dll - Tiered Detection Architecture (Rule 92153 · EID 7)
+### vaultcli.dll - Tiered Detection Architecture (Rule 92153 · EID 7)
 
 `vaultcli.dll` (Windows Credential Vault Client Library) is a primary target for **T1555 / T1555.004** credential dumping - Mimikatz `vault::list`, `vault::cred` and custom tooling.
 
@@ -465,7 +465,7 @@ Wazuh loads rules alphabetically. The group tag `sysmon_event1` is registered wh
 
 ---
 
-### 🔵 Dual Provider Visibility - Preserved by Design
+### Dual Provider Visibility - Preserved by Design
 
 This rewrite does **not** replace or suppress EID 4688 (Security-Auditing). Both providers fire simultaneously, delivering complementary visibility layers:
 
@@ -483,7 +483,7 @@ This rewrite does **not** replace or suppress EID 4688 (Security-Auditing). Both
 
 ---
 
-### 🗺️ MITRE ATT&CK Coverage
+### MITRE ATT&CK Coverage
 
 | Tactic | Techniques Covered |
 |---|---|
@@ -499,7 +499,7 @@ This rewrite does **not** replace or suppress EID 4688 (Security-Auditing). Both
 
 ---
 
-### ⚙️ Escaping Reference - Critical for Rule Maintenance
+### Escaping Reference - Critical for Rule Maintenance
 
 The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 
@@ -512,7 +512,7 @@ The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 
 ---
 
-### ✅ Native Sysmon Rule Redesign for Windows Native Sysmon
+### Native Sysmon Rule Redesign for Windows Native Sysmon
 
 ```text
 0595  EID 1:  Process Creation - Infrastructure routing and process anomaly detection
@@ -529,7 +529,7 @@ The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 
 ---
 
-### ✅ Production Validation
+### Production Validation
 
 ```text
 Manager  : Wazuh 4.14.4 (Ubuntu)
@@ -544,7 +544,7 @@ EID 4688 (Rule 67027) firing in parallel - dual provider visibility confirmed �
 
 ---
 
-## 🤝 Acknowledgments & Credits
+## Acknowledgments & Credits
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
 
