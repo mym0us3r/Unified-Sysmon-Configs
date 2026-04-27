@@ -17,15 +17,15 @@
 
 ## Table of Contents
 
-- [Executive Summary](#-executive-summary)
-- [Test Environment](#-test-environment)
-- [Attack Scenarios](#-attack-scenarios)
-- [Phase 1 - Native Sysmon Results](#-phase-1---native-sysmon-config-results)
-- [Phase 2 - Legacy Sysmon Results](#-phase-2---legacy-sysmon-config-results)
-- [Comparative Results Matrix](#-comparative-results-matrix)
-- [Key Findings](#-key-findings)
-- [Conclusion](#-conclusion)
-- [References](#-references)
+- [Executive Summary](#executive-summary)
+- [Test Environment](#test-environment)
+- [Attack Scenarios](#attack-scenarios)
+- [Phase 1 - Native Sysmon Results](#phase-1---native-sysmon-config-results)
+- [Phase 2 - Legacy Sysmon Results](#phase-2---legacy-sysmon-config-results)
+- [Comparative Results Matrix](#comparative-results-matrix)
+- [Key Findings](#key-findings)
+- [Conclusion](#conclusion)
+- [Greetz](#greetz)
 
 ---
 
@@ -33,7 +33,9 @@
 
 This report documents a structured adversary simulation comparing detection coverage between two Sysmon configurations running on the same endpoint under the same Wazuh 4.14.4 environment. Three attack scenarios were executed identically under each configuration. The results expose fundamental architectural differences between the two models - not just in what they detect, but in **where the detection intelligence resides**.
 
-The Native Sysmon configuration (`sysmon-native.xml`, schema 4.91) filters at the source using `groupRelation="and"` logic, delivering high-fidelity behavioral telemetry before events reach the SIEM. The Legacy configuration (`sysmonconfig.xml`, schema 4.90) operates on a collect-first model anchored on known-bad lists - known parent images, known DLL names, known command-line patterns. When the attacker uses an unlisted vector, the Legacy config produces zero telemetry.
+The Native Sysmon configuration (`sysmon-native.xml`, schema 4.91) filters at the source using `groupRelation="and"` logic, delivering high-fidelity behavioral telemetry before events reach the SIEM. The Legacy configuration (`sysmonconfig.xml`, olafhartong/sysmon-modular, schema 4.90) operates on a collect-first model anchored on known-bad lists - known parent images, known DLL names, known command-line patterns.
+
+> **Important clarification:** `groupRelation="and"` has been supported by the Sysmon schema since version 4.2 (Sysmon v9.0, 2019), as documented by Olaf Hartong at Derbycon 2019. The distinction between Phase 1 and Phase 2 is not a schema capability gap - it is a **configuration design choice**. The legacy config file (`sysmonconfig.xml`) does not apply AND logic for the tested scenarios. When the attacker uses an unlisted vector, the Legacy config produces zero telemetry.
 
 > **Security fix identified during testing:** Rule `92153` used name-only process exclusions (`\\\\svchost\.exe$`), creating a bypass surface. Any malicious binary renamed `svchost.exe` in any path inherited the OS process exclusion and never reached Tier 1 detection. The fix enforces full-path exclusions under `Windows\System32` and `Windows\SysWOW64`. File `0820-sysmon_id_7.xml` updated and published to the repository on April 26, 2026.
 
@@ -94,7 +96,7 @@ svchost.exe -nop -c "$a=Add-Type -MemberDefinition '[DllImport(""kernel32.dll"")
 
 ## Phase 1 - Native Sysmon Config Results
 
-> **Config active:** `sysmon-native.xml` (schema 4.91) - `groupRelation="and"` - filter at the source
+> **Config active:** `sysmon-native.xml` (schema 4.91) - `groupRelation="and"` applied at the source - filter-first model
 
 ### Scenario 1 - Masqueraded PowerShell
 
@@ -139,7 +141,8 @@ imageLoaded: C:\\Users\\kr\\AppData\\Local\\Temp\\vaultcli.dll
 
 ## Phase 2 - Legacy Sysmon Config Results
 
-> **Config active:** `sysmonconfig.xml` (olafhartong/sysmon-modular schema 4.90) - collect-first, known-bad lists
+> **Config active:** `sysmonconfig.xml` (olafhartong/sysmon-modular schema 4.90) - collect-first, OR-based include lists.  
+> **Note:** Schema 4.90 supports `groupRelation="and"` (available since schema 4.2 / Sysmon v9.0, 2019). The detection gaps below reflect the **design choices of the legacy config file**, not a schema limitation.
 
 ### Scenario 1 - Masqueraded PowerShell
 
@@ -175,6 +178,7 @@ EID 1 generated : 0
 Alerts fired    : 0
 Reason          : ProcessCreate includes based on known ParentImage vectors only.
                   svchost.exe from AppData\Local\Temp matches no include condition.
+                  AND logic is available in schema 4.90 but not implemented here.
 ```
 
 ### Scenario 3 - Credential Vault DLL Load
@@ -208,7 +212,7 @@ Reason          : ImageLoad include list does not contain vaultcli.dll.
 
 ### Finding 1 - Detection intelligence location
 
-The Native config embeds detection intelligence at the sensor level via `groupRelation="and"` (schema 4.91). The Legacy config relies on the SIEM to process raw events. In Scenario 1, both configs produced alerts - but the Legacy config would fail silently in any environment without a mature server-side ruleset. **The Native config is self-sufficient at the endpoint level.**
+The Native config embeds detection intelligence at the sensor level via `groupRelation="and"` - a design choice that the legacy config file does not apply for the tested scenarios. Both schema 4.90 and 4.91 support AND logic; the difference is that `sysmon-native.xml` was built from the ground up with behavioral AND filtering, while `sysmonconfig.xml` relies on OR-based known-vector lists. In Scenario 1, both configs produced alerts - but the Legacy config would fail silently in any environment without a mature server-side ruleset. **The Native config is self-sufficient at the endpoint level.**
 
 ### Finding 2 - Known-vector vs behavioral model
 
