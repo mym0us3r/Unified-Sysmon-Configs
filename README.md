@@ -24,7 +24,7 @@ Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat huntin
 - [Pre-Deployment & Health Checks](#-pre-deployment--health-checks)
 - [Automated Health Audit](#-automated-health-audit-recommended)
 - [Wazuh Integration](#-wazuh-discover-native-sysmon-integration)
-- [**Wazuh Ruleset - Native Sysmon Rewrite**](#-wazuh-ruleset--native-sysmon-rewrite)
+- [Wazuh Ruleset - Native Sysmon Rewrite](#-wazuh-ruleset--native-sysmon-rewrite)
 - [Acknowledgments & Credits](#-acknowledgments--credits)
 
 ---
