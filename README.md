@@ -298,7 +298,7 @@ Sysmon is running.
 ### 5. GUI validation
 
 ```
-Settings → Apps → Optional Features → Installed features → Sysmon
+Settings → System → Optional features → More Windows features (opens the classic "Windows Features" dialog, also reachable via `optionalfeatures.exe`) → Sysmon
 services.msc → Sysmon → Status: Running | Startup: Automatic
 eventvwr.msc → Applications and Services Logs → Microsoft → Windows → Sysmon → Operational
 ```
