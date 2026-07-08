@@ -198,6 +198,10 @@ image      : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
 originalFileName: PowerShell.EXE
 ```
 
+![Scenario 1 Legacy - Wazuh Discover, server-side rules 61618/92213/92151 firing](../docs/SYSMON%20LEGACY%20-%20Scenario%201%20%E2%80%94%20Masqueraded%20PowerShell%20(T1036%20%2B%20T1059.001).png)
+
+*Wazuh Discover - Scenario 1, Legacy config: server-side ruleset captured the event via `originalFileName=PowerShell.EXE`, same as documented. Noise from Windows Update activity (`92154`) also visible in the same window - the collect-first model does not filter it at the source.*
+
 ### Scenario 2 - LOLBin via Non-Standard Parent
 
 **Zero EID 1 generated on the endpoint.**
@@ -222,18 +226,38 @@ Reason          : ProcessCreate includes based on known ParentImage vectors only
                   AND logic is available in schema 4.90 but not implemented here.
 ```
 
+![Scenario 2 Legacy - Wazuh Discover, zero attack telemetry](../docs/SYSMON%20LEGACY%20-%20Scenario%202%20%E2%80%94%20LOLBin%20Execution%20via%20Non-Standard%20Parent%20(T1137%20%2B%20T1059.001).png)
+
+*Wazuh Discover - Scenario 2, Legacy config: all 6 hits in the attack window are unrelated noise (Windows Update `taskschd.dll` loads, scripting-policy artifacts) - none reference the masqueraded `svchost.exe` or a child `powershell.exe` process. Confirms zero telemetry for the attack itself, not an artifact of a narrow time window.*
+
 ### Scenario 3 - Credential Vault DLL Load
 
-**Zero EID 7 generated on the endpoint.**
+**EID 7 was generated, and rule `92153` fired at level 10** - but not for the reason the original version of this report assumed, and not through recognition of `vaultcli.dll` as a credential-theft indicator.
 
-The legacy config uses `ImageLoad onmatch="include"` with a specific DLL list - `amsi.dll`, `clr.dll`, `bitsproxy.dll`, `system.management.automation.dll`. `vaultcli.dll` is completely absent from the list.
+The legacy config's `ImageLoad onmatch="include"` block does **not** contain a DLL-name entry for `vaultcli.dll` - that part of the original finding was correct. What was missed is a separate, generic rule in the same include block, built for DLL Side-Loading detection (T1574.002), that matches on the **loading process's path** rather than the DLL name:
+
+```xml
+<ImageLoaded name="technique_id=T1574.002,technique_name=DLL Side-Loading"
+             condition="contains any">admin$;c$;\\;\appdata\;\temp\</ImageLoaded>
+```
+
+The attack loads `vaultcli.dll` from `C:\Users\kr\AppData\Local\Temp\`, a path that contains both `\appdata\` and `\temp\`. Any DLL loaded from that path would have matched this rule - `vaultcli.dll` was incidental, not recognized. The event that reached Wazuh was then picked up by rule `92153` (server-side ruleset), which does inspect `imageLoaded` for `vaultcli.dll` specifically and produced the description "Suspicious process loaded VaultCli.dll module. Possible use to dump stored passwords."
 
 ```
-EID 7 generated : 0
-Alerts fired    : 0
-Reason          : ImageLoad include list does not contain vaultcli.dll.
-                  No rule covers credential vault DLL access by process path context.
+rule.id     : 92153
+rule.level  : 10
+rule.groups : sysmon, sysmon_eid7_detections, windows
+image       : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
+imageLoaded : C:\\Users\\kr\\AppData\\Local\\Temp\\vaultcli.dll
 ```
+
+![Scenario 3 Legacy - Wazuh Discover, rule 92153 firing by path coincidence](../docs/SYSMON%20LEGACY%20-%20Scenario%203%20%E2%80%94%20Credential%20Vault%20DLL%20Load%20from%20High-Risk%20Path%20(T15555.004).png)
+
+*Wazuh Discover - Scenario 3, Legacy config: rule `92153` (level 10) fires, but the surrounding chain (`92151`, `92213`, `61618`, `92154`) shows this is the same server-side ruleset from Scenarios 1-2, not a purpose-built credential-vault detection. Compare severity directly with the Native config's `92158` at level 15 CRITICAL for the identical attack.*
+
+**Why this matters:** detection here is a side effect of path coincidence, not design. If the attacker had staged `vaultcli.dll` from any path outside the Side-Loading rule's list - `C:\ProgramData\`, for example - Sysmon would not have generated the EID 7 at all, and rule `92153` would have had nothing to evaluate, regardless of how specific its own logic is. Severity is also lower: Legacy classifies this at **level 10**, while the Native config's tiered rule (`92158`) classifies the identical attack at **level 15, CRITICAL** - the same event gets triaged with materially different urgency depending on which config produced it. See [Finding 6](#finding-6---legacy-detection-by-path-coincidence-not-dll-recognition) for the full analysis.
+
+> **Correction note:** the original version of this report stated "Zero EID 7 generated... No rule covers credential vault DLL access by process path context." That statement was based on checking only the DLL-name include list and did not account for the separate path-based Side-Loading rule in the same `ImageLoad` block. The config file itself is unchanged since the original test (single commit, March 23, 2026) - this is a correction to the analysis, not a change in the software under test.
 
 > **Additional observation during Phase 2:** Rule `92041` fired over 60 consecutive times for `reg.exe` spawned by `PwmTower.exe` (Trend Micro Password Manager). This is the collect-first model in production: legitimate software activity generates sustained alert volume that buries real signals - the precise condition that leads to analyst fatigue and suppression of entire rule channels.
 
@@ -245,9 +269,11 @@ Reason          : ImageLoad include list does not contain vaultcli.dll.
 |---|---|---|---|---|---|---|
 | Masqueraded PowerShell | T1036+T1059.001 | Captured - behavioral context | 61618 | 12 | Captured - server-side only | ✅ YES |
 | LOLBin Non-Standard Parent | T1137+T1059.001 | Captured - covered by 61618, not 92027 (see Finding 5) | 61618 * | 12 * | **Zero telemetry** | ❌ NO |
-| Credential Vault DLL | T1555.004 | Captured - tiered path detection | 92158 | 15 | **Zero telemetry** | ❌ NO |
+| Credential Vault DLL | T1555.004 | Captured - tiered path detection | 92158 | 15 | Captured - by path coincidence, not DLL recognition (see Finding 6) | ✅ YES ** |
 
 `*` Rule `92027` (L4) has a blind spot against a masqueraded parent and does not fire for this scenario's attack chain; the actual detection comes from `61618` firing on the fake `svchost.exe` process itself. See [Finding 5](#finding-5---rule-92027-blind-spot-for-masqueraded-parent-processes).
+
+`**` Rule `92153` (L10) fires only because the attack path (`AppData\Local\Temp`) matches a generic DLL Side-Loading rule (T1574.002) that triggers on path, not DLL identity. A `vaultcli.dll` staged from a path outside that list would produce zero telemetry under Legacy. Severity is also lower than Native's equivalent (L10 vs L15 CRITICAL). See [Finding 6](#finding-6---legacy-detection-by-path-coincidence-not-dll-recognition).
 
 ---
 
@@ -302,6 +328,24 @@ See the Scenario 2 screenshot above for the raw Discover evidence of this chain.
 
 This is defense in depth working as designed: a path-based rule (`92027`) has a blind spot for a masqueraded parent, but an identity-based rule (`61618`) evaluating the same attack chain from a different angle closes it. It is nonetheless a real limitation worth fixing - a future revision of `92027` should either chain from `if_sid>61618` to add masqueraded-parent coverage, or accept the current asymmetry as intentional and document it as such in the rule's own description field.
 
+### Finding 6 - Legacy detection by path coincidence, not DLL recognition
+
+Scenario 3 under Legacy was originally reported as zero telemetry. Re-testing with the same, unmodified config file (verified via GitHub commit history - single commit, March 23, 2026, no changes since) shows EID 7 **is** generated and rule `92153` **does** fire. The original finding was incomplete, not wrong about what it checked: the DLL-name include list genuinely has no `vaultcli.dll` entry. What it missed is a second, independent rule in the same `ImageLoad` block:
+
+```xml
+<ImageLoaded name="technique_id=T1574.002,technique_name=DLL Side-Loading"
+             condition="contains any">admin$;c$;\\;\appdata\;\temp\</ImageLoaded>
+```
+
+This rule matches on the **path** the DLL was loaded from, not the DLL's identity. It exists to catch DLL side-loading generally (T1574.002), and `AppData\Local\Temp` - the path used in this scenario's attack - happens to satisfy it. Any DLL loaded from that path would trigger the same rule; `vaultcli.dll` receiving a security-relevant description ("Suspicious process loaded VaultCli.dll module") only happens downstream, in Wazuh rule `92153`, which does inspect the DLL name once the raw event exists.
+
+The distinction matters for two reasons:
+
+1. **Coverage is accidental, not guaranteed.** A `vaultcli.dll` loaded from `C:\ProgramData\` or any path outside the Side-Loading rule's list produces zero telemetry under Legacy - the same blind spot the original report described, just narrower than first thought.
+2. **Severity is understated.** Legacy classifies the event at **level 10**. The Native config's purpose-built, tiered rule (`92158`) classifies the identical attack at **level 15, CRITICAL**. An analyst triaging by severity alone would treat the same credential-theft attempt very differently depending on which config generated the alert.
+
+This is the inverse of Finding 5: there, a Native rule had a blind spot that a second Native rule covered by design. Here, a Legacy rule "covers" a scenario it was never built to detect, purely because of where the attacker happened to stage the payload - and under-scores it when it does.
+
 ---
 
 ## Conclusion
@@ -312,7 +356,7 @@ The three scenarios produced three distinct behavioral models:
 
 **Scenario 2** - The Legacy config produced zero telemetry. The Native config detected the behavioral anomaly - not through the rule originally credited (`92027`, which has a documented blind spot for masqueraded parents), but through `61618` evaluating the same attack chain from the process-identity angle. The attacker's vector (`svchost.exe` from `AppData\Local\Temp`) was not in any Legacy include list and produced no telemetry at all under Legacy; under Native, defense in depth closed the gap that a single rule left open.
 
-**Scenario 3** - The Legacy config produced zero telemetry. `vaultcli.dll` is not in the Legacy ImageLoad include list. For the Native config, the risk is determined by where the loading process lives - not by which DLL is being loaded. A new credential dumping technique targeting a different Credential Manager DLL would still be caught by the Native tiered architecture. It would be completely invisible to the Legacy config.
+**Scenario 3** - The Legacy config captured the event, but not by recognizing `vaultcli.dll` - a generic DLL Side-Loading rule matched because the attack happened to stage the DLL in `AppData\Local\Temp`, a path that rule already watches for unrelated reasons. Stage the same DLL from a path outside that list and Legacy produces zero telemetry, exactly as originally reported for this narrower case. Where it does fire, it also under-classifies the severity (level 10) relative to Native's purpose-built rule (level 15, CRITICAL). For the Native config, the risk is determined by where the loading process lives, deliberately and by design - not by accidentally overlapping with a different rule's path list. A new credential dumping technique targeting a different Credential Manager DLL would still be caught by the Native tiered architecture regardless of staging path. Under Legacy, detection depends on the attacker's path choice colliding with an unrelated rule - which is not something a defender can rely on.
 
 > **The Legacy model answers:** *"Did the attacker use a known technique?"*
 > **The Native model answers:** *"Did the attacker behave anomalously?"*
