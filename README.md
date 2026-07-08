@@ -15,17 +15,17 @@ Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat huntin
 
 ## Table of Contents
 
-- [Strategic Overview](#-strategic-overview)
-- [Behavioral Sensor Architecture](#-behavioral-sensor-architecture)
-- [Detection Philosophy](#-detection-philosophy)
-- [Practical Example: Process Creation (EID 1)](#-practical-example-process-creation-eid-1)
-- [Repository Structure](#-repository-structure)
-- [Featured Documentation](#-featured-documentation-sysmon-as-a-native-resource)
-- [Pre-Deployment & Health Checks](#-pre-deployment--health-checks)
-- [Automated Health Audit](#-automated-health-audit-recommended)
-- [Wazuh Integration](#-wazuh-discover-native-sysmon-integration)
-- [Wazuh Ruleset - Native Sysmon Rewrite](#-wazuh-ruleset--native-sysmon-rewrite)
-- [Acknowledgments & Credits](#-acknowledgments--credits)
+- [Strategic Overview](#strategic-overview)
+- [Behavioral Sensor Architecture](#behavioral-sensor-architecture)
+- [Detection Philosophy](#detection-philosophy)
+- [Practical Example: Process Creation (EID 1)](#practical-example-process-creation-eid-1)
+- [Repository Structure](#repository-structure)
+- [Featured Documentation](#featured-documentation-sysmon-as-a-native-resource)
+- [Pre-Deployment & Health Checks](#pre-deployment--health-checks)
+- [Automated Health Audit](#automated-health-audit-recommended)
+- [Wazuh Integration](#wazuh-discover-native-sysmon-integration)
+- [Wazuh Ruleset - Native Sysmon Rewrite](#-wazuh-ruleset---native-sysmon-rewrite)
+- [Acknowledgments & Credits](#acknowledgments--credits)
 
 ---
 
