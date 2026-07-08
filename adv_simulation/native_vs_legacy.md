@@ -8,11 +8,6 @@
 ![mitre](https://img.shields.io/badge/MITRE%20ATT%26CK-v15-blue)
 ![platform](https://img.shields.io/badge/platform-Windows%2011%2024H2%2B-lightgrey)
 
-**Author:** [@mym0us3r](https://github.com/mym0us3r)
-**Date:** April 26, 2026  
-**Repository:** https://github.com/mym0us3r/Unified-Sysmon-Configs  
-**Environment:** Wazuh 4.14.4 - Windows 11 24H2+ Build 26200 - Sysmon Native engine schema 4.91
-
 ---
 
 ## Table of Contents
@@ -39,6 +34,8 @@ The Native Sysmon configuration (`sysmon-native.xml`, schema 4.91) filters at th
 
 > **Security fix identified during testing:** Rule `92153` used name-only process exclusions (`\\\\svchost\.exe$`), creating a bypass surface. Any malicious binary renamed `svchost.exe` in any path inherited the OS process exclusion and never reached Tier 1 detection. The fix enforces full-path exclusions under `Windows\System32` and `Windows\SysWOW64`. File `0820-sysmon_id_7.xml` updated and published to the repository on April 26, 2026.
 
+> **Rule limitation identified during testing:** rule `92027` has a blind spot for masqueraded parent processes - see [Finding 5](#finding-5---rule-92027-blind-spot-for-masqueraded-parent-processes). The gap was covered by rule `61618` in the same evaluation chain (defense in depth), so detection coverage for Scenario 2 was not lost, but the specific rule limitation is documented below.
+
 ---
 
 ## Test Environment
@@ -54,13 +51,15 @@ The Native Sysmon configuration (`sysmon-native.xml`, schema 4.91) filters at th
 | **Phase 2 ruleset** | `ruleset/rules/wazuh-server-4.14/ default install` |
 | **Agent config** | `log_format: eventchannel` - `Microsoft-Windows-Sysmon/Operational` |
 
+**Ruleset location:** `/var/ossec/ruleset/rules/` (files `0595` and `0800`-`0950`), `wazuh-analysisd -t` confirmed zero warnings before testing. Agent: `agent.id 009`, `agent.name DELL`, `computer LABDESK`, `agent.ip 192.168.1.3`. Evidence captured directly from Wazuh Discover (`wazuh-alerts-4.x-2026.07.07`).
+
 ---
 
 ## Attack Scenarios
 
 ### Scenario 1 - Masqueraded PowerShell (T1036 + T1059.001)
 
-**Attack:** `powershell.exe` copied to `C:\Users\kr\AppData\Local\Temp\svchost.exe` and executed via `cmd.exe` with `-nop -enc` flags and a Base64-encoded payload.
+**Attack:** `powershell.exe` copied to `C:\Users\kr\AppData\Local\Temp\svchost.exe` and executed with `-nop -enc` flags and a Base64-encoded payload.
 
 ```cmd
 copy "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "C:\Users\kr\AppData\Local\Temp\svchost.exe"
@@ -69,6 +68,8 @@ copy "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "C:\Users\kr\Ap
 ```
 
 > Decoded payload: `Write-Host 'PowerShell Masked'`
+
+> **Shell note:** invoking the fake binary from `cmd.exe` produces `parentImage=cmd.exe`. Invoking it from an interactive PowerShell session with the call operator (`& "C:\Users\kr\AppData\Local\Temp\svchost.exe" -nop -enc "..."`) produces `parentImage=powershell.exe` instead. Both are valid non-standard-parent conditions for rule `61618`, and both fire identically at level 12 - the detection is anchored on the fake process's own identity and non-standard parent, not on which specific parent invoked it.
 
 ---
 
@@ -81,6 +82,8 @@ cd "C:\Users\kr\AppData\Local\Temp"
 svchost.exe -nop -c "Start-Process powershell.exe -ArgumentList '-nop -w hidden -enc VwByAGkAdABlAC0ASABvAHMAdAAgACcAVAAxADEAMwA3AC0AVABlAHMAdAAnAA=='"
 ```
 
+> **Note:** from a PowerShell prompt this requires the call operator: `& .\svchost.exe -nop -c "..."`.
+
 ---
 
 ### Scenario 3 - Credential Vault DLL Load from High-Risk Path (T1555.004)
@@ -92,6 +95,17 @@ cd "C:\Users\kr\AppData\Local\Temp"
 svchost.exe -nop -c "$a=Add-Type -MemberDefinition '[DllImport(""kernel32.dll"")] public static extern IntPtr LoadLibrary(string s);' -Name L -PassThru; $a::LoadLibrary('C:\Users\kr\AppData\Local\Temp\vaultcli.dll')"
 ```
 
+> **PowerShell prompt note:** running this literally from an interactive PowerShell session fails, because the outer double quotes cause `$a=...` to be interpolated before reaching the fake binary. Use `-enc` instead, same pattern as Scenarios 1 and 2:
+>
+> ```powershell
+> cd "C:\Users\kr\AppData\Local\Temp"
+> $cmd = '$a=Add-Type -MemberDefinition ''[DllImport("kernel32.dll")] public static extern IntPtr LoadLibrary(string s);'' -Name L -PassThru; $a::LoadLibrary(''C:\Users\kr\AppData\Local\Temp\vaultcli.dll'')'
+> $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($cmd))
+> & .\svchost.exe -nop -enc $encoded
+> ```
+>
+> This also requires a `vaultcli.dll` copy to exist at the target path beforehand: `copy "C:\Windows\System32\vaultcli.dll" "C:\Users\kr\AppData\Local\Temp\vaultcli.dll"`.
+
 ---
 
 ## Phase 1 - Native Sysmon Config Results
@@ -100,28 +114,41 @@ svchost.exe -nop -c "$a=Add-Type -MemberDefinition '[DllImport(""kernel32.dll"")
 
 ### Scenario 1 - Masqueraded PowerShell
 
-Rule `61618` fired at **level 12** (T1055). The Sysmon Native config captured the process through behavioral context: high-risk execution path, non-standard parent process (`cmd.exe`), and real binary identity exposed via `OriginalFileName=PowerShell.EXE` from the PE header. The process name is `svchost.exe` - legacy logic anchored on `Image=powershell.exe` would have produced zero alerts.
+Rule `61618` fired at **level 12** (T1055). The Sysmon Native config captured the process through behavioral context: high-risk execution path, non-standard parent process, and real binary identity exposed via `OriginalFileName=PowerShell.EXE` from the PE header. The process name is `svchost.exe` - legacy logic anchored on `Image=powershell.exe` would have produced zero alerts.
 
 ```
-rule.id         : 61618
-rule.level      : 12
-mitre           : T1055
-image           : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
-originalFileName: PowerShell.EXE
-parentImage     : C:\\Windows\\System32\\cmd.exe
+rule.id           : 61618
+rule.level        : 12
+rule.mitre.id      : T1055
+rule.mitre.tactic : Defense Evasion, Privilege Escalation
+image              : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
+originalFileName   : PowerShell.EXE
+parentImage        : C:\\Windows\\System32\\cmd.exe
 ```
 
 ### Scenario 2 - LOLBin via Non-Standard Parent
 
-Rule `92027` fired at **level 4** (T1059.001). Telemetry captured `parentImage=powershell.exe` and `image=powershell.exe` with full fidelity. Detection was based on behavioral pattern - process creating another process with obfuscation flags - not on a static signature.
+The attack chain is captured, but not by the rule one would expect. Rule `92027` (T1059.001, "PowerShell spawned PowerShell") is designed to fire when both `image` and `parentImage` are literally `powershell.exe`. In this scenario the parent is masqueraded - `svchost.exe`, not `powershell.exe` - so `92027`'s `parentImage` condition does not match and the rule does not fire.
+
+Detection instead comes from rule `61618` (T1055), which fires independently at the moment the masqueraded `svchost.exe` process is created, anchored on `OriginalFileName=PowerShell.EXE` from its own PE header rather than on the parent's filename:
 
 ```
-rule.id    : 92027
-rule.level : 4
-mitre      : T1059.001
-image      : C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe
-parentImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe
+67027 (EID 4688, Security channel)  - process created (parallel visibility)
+  └─► 61618 (T1055, level 12)       - fires on the masqueraded svchost.exe itself
+        └─► 92000 (EID 1 anchor, level 3) - the child powershell.exe process
+              (92027 evaluated against this event, but its parentImage
+               condition does not match Temp\svchost.exe - rule does not fire)
 ```
+
+```
+rule.id    : 61618
+rule.level : 12
+mitre      : T1055
+image      : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
+parentImage: (the invoking shell - cmd.exe or powershell.exe, see Scenario 1 shell note)
+```
+
+This is defense in depth working as intended: `92027` has a blind spot for a masqueraded parent, but `61618` evaluating the same attack chain from a process-identity angle closes it. See [Finding 5](#finding-5---rule-92027-blind-spot-for-masqueraded-parent-processes) for the full rule-level analysis.
 
 ### Scenario 3 - Credential Vault DLL Load
 
@@ -135,13 +162,15 @@ image      : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
 imageLoaded: C:\\Users\\kr\\AppData\\Local\\Temp\\vaultcli.dll
 ```
 
+Confirmed with 2 independent firings captured in Wazuh Discover, same rule ID, same description, same tiered path logic.
+
 > **Security fix applied:** The previous version of rule `92153` used `\\\\svchost\.exe$` (name only). A malicious binary named `svchost.exe` in `AppData\Local\Temp` bypassed Tier 0 and never reached Tier 1. Fix: full-path exclusions enforced under `Windows\System32` and `Windows\SysWOW64`. Published to repository on April 26, 2026.
 
 ---
 
 ## Phase 2 - Legacy Sysmon Config Results
 
-> **Config active:** `sysmonconfig.xml` (olafhartong/sysmon-modular schema 4.90) - collect-first, OR-based include lists.  
+> **Config active:** `sysmonconfig.xml` (olafhartong/sysmon-modular schema 4.90) - collect-first, OR-based include lists.
 > **Note:** Schema 4.90 supports `groupRelation="and"` (available since schema 4.2 / Sysmon v9.0, 2019). The detection gaps below reflect the **design choices of the legacy config file**, not a schema limitation.
 
 ### Scenario 1 - Masqueraded PowerShell
@@ -203,8 +232,10 @@ Reason          : ImageLoad include list does not contain vaultcli.dll.
 | Scenario | MITRE | Phase 1 (Native) | Rule | Level | Phase 2 (Legacy) | EID Generated |
 |---|---|---|---|---|---|---|
 | Masqueraded PowerShell | T1036+T1059.001 | Captured - behavioral context | 61618 | 12 | Captured - server-side only | ✅ YES |
-| LOLBin Non-Standard Parent | T1137+T1059.001 | Captured - behavioral pattern | 92027 | 4 | **Zero telemetry** | ❌ NO |
+| LOLBin Non-Standard Parent | T1137+T1059.001 | Captured - covered by 61618, not 92027 (see Finding 5) | 61618 * | 12 * | **Zero telemetry** | ❌ NO |
 | Credential Vault DLL | T1555.004 | Captured - tiered path detection | 92158 | 15 | **Zero telemetry** | ❌ NO |
+
+`*` Rule `92027` (L4) has a blind spot against a masqueraded parent and does not fire for this scenario's attack chain; the actual detection comes from `61618` firing on the fake `svchost.exe` process itself. See [Finding 5](#finding-5---rule-92027-blind-spot-for-masqueraded-parent-processes).
 
 ---
 
@@ -235,19 +266,41 @@ Identified during Scenario 3 testing: rule `92153` used `\\\\svchost\.exe$` as a
 
 During Phase 2 testing, rule `92041` fired 60+ consecutive times for legitimate `reg.exe` activity from Trend Micro Password Manager. This is the collect-first model in real production conditions. Analysts in this environment learn to suppress high-volume channels - which is exactly where the signal for an actual attack would appear.
 
+### Finding 5 - Rule 92027 blind spot for masqueraded parent processes
+
+Rule `92027` (T1059.001, "PowerShell spawned PowerShell") anchors detection on a literal path match:
+
+```xml
+<field name="win.eventdata.parentImage" type="pcre2">(?i)\\powershell\.exe</field>
+```
+
+This assumes the parent process retains its real filename. When the parent is masqueraded - renamed to `svchost.exe`, as in Scenario 2's own attack chain - `parentImage` no longer matches `powershell.exe`, and `92027` does not fire. Sysmon EID 1 has no `ParentOriginalFileName` field, so there is no direct equivalent of `OriginalFileName` for validating the parent's true identity within this rule.
+
+The gap did not translate into a detection failure: rule `61618` (T1055) fires independently at the moment the masqueraded `svchost.exe` process is created, using `OriginalFileName=PowerShell.EXE` from its own PE header rather than depending on the parent's filename. The full evaluation chain observed in production:
+
+```
+67027 (EID 4688, Security channel)           - process created (parallel visibility)
+  └─► 61618 (T1055, level 12) - fires on the masqueraded svchost.exe itself
+        └─► 92000 (EID 1 anchor, level 3) - the child powershell.exe process
+              (92027 evaluated against this event, but its parentImage
+               condition does not match Temp\svchost.exe - rule does not fire)
+```
+
+This is defense in depth working as designed: a path-based rule (`92027`) has a blind spot for a masqueraded parent, but an identity-based rule (`61618`) evaluating the same attack chain from a different angle closes it. It is nonetheless a real limitation worth fixing - a future revision of `92027` should either chain from `if_sid>61618` to add masqueraded-parent coverage, or accept the current asymmetry as intentional and document it as such in the rule's own description field.
+
 ---
 
 ## Conclusion
 
 The three scenarios produced three distinct behavioral models:
 
-**Scenario 1** - Both configs captured the event, but for different reasons. The Native config filtered at the source with AND logic. The Legacy config sent raw telemetry and the server did the work. The Native model is resilient - it does not depend on server-side intelligence to produce a meaningful alert.
+**Scenario 1** - Both configs captured the event, but for different reasons. The Native config filtered at the source with AND logic. The Legacy config sent raw telemetry and the server did the work. The Native model is resilient - it does not depend on server-side intelligence to produce a meaningful alert, and remains resilient across different invoking shells.
 
-**Scenario 2** - The Legacy config produced zero telemetry. The Native config detected the behavioral anomaly immediately. The attacker's vector (`svchost.exe` from `AppData\Local\Temp`) was not in any Legacy include list. For the Native config, the path risk and parent context were sufficient - no list required.
+**Scenario 2** - The Legacy config produced zero telemetry. The Native config detected the behavioral anomaly - not through the rule originally credited (`92027`, which has a documented blind spot for masqueraded parents), but through `61618` evaluating the same attack chain from the process-identity angle. The attacker's vector (`svchost.exe` from `AppData\Local\Temp`) was not in any Legacy include list and produced no telemetry at all under Legacy; under Native, defense in depth closed the gap that a single rule left open.
 
 **Scenario 3** - The Legacy config produced zero telemetry. `vaultcli.dll` is not in the Legacy ImageLoad include list. For the Native config, the risk is determined by where the loading process lives - not by which DLL is being loaded. A new credential dumping technique targeting a different Credential Manager DLL would still be caught by the Native tiered architecture. It would be completely invisible to the Legacy config.
 
-> **The Legacy model answers:** *"Did the attacker use a known technique?"*  
+> **The Legacy model answers:** *"Did the attacker use a known technique?"*
 > **The Native model answers:** *"Did the attacker behave anomalously?"*
 
 ---
