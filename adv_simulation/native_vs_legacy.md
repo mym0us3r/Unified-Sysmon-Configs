@@ -126,6 +126,10 @@ originalFileName   : PowerShell.EXE
 parentImage        : C:\\Windows\\System32\\cmd.exe
 ```
 
+![Scenario 1 - Wazuh Discover, rule 61618 firing on the masqueraded svchost.exe](../docs/Scenario%201%20%E2%80%94%20Masqueraded%20PowerShell%20(T1036%20%2B%20T1059.001).png)
+
+*Wazuh Discover - Scenario 1: rule 61618 (level 12, T1055) firing on the masqueraded `svchost.exe`. Five consecutive firings shown, including the original test and the parallel trigger from Scenario 2's own attack chain.*
+
 ### Scenario 2 - LOLBin via Non-Standard Parent
 
 The attack chain is captured, but not by the rule one would expect. Rule `92027` (T1059.001, "PowerShell spawned PowerShell") is designed to fire when both `image` and `parentImage` are literally `powershell.exe`. In this scenario the parent is masqueraded - `svchost.exe`, not `powershell.exe` - so `92027`'s `parentImage` condition does not match and the rule does not fire.
@@ -148,6 +152,10 @@ image      : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
 parentImage: (the invoking shell - cmd.exe or powershell.exe, see Scenario 1 shell note)
 ```
 
+![Scenario 2 - Wazuh Discover, evaluation chain 67027 to 61618 to 92000](../docs/Scenario%202%20%E2%80%94%20LOLBin%20Execution%20via%20Non-Standard%20Parent%20(T1137%20%2B%20T1059.001).png)
+
+*Wazuh Discover - Scenario 2: the full evaluation chain captured in Discover - rule `67027` (EID 4688, parallel visibility), rule `61618` (T1055, level 12, fires on the masqueraded parent), and rule `92000` (EID 1 anchor for the child `powershell.exe` process). No `92027` entry appears in this chain - confirming the blind spot described below.*
+
 This is defense in depth working as intended: `92027` has a blind spot for a masqueraded parent, but `61618` evaluating the same attack chain from a process-identity angle closes it. See [Finding 5](#finding-5---rule-92027-blind-spot-for-masqueraded-parent-processes) for the full rule-level analysis.
 
 ### Scenario 3 - Credential Vault DLL Load
@@ -161,6 +169,10 @@ mitre      : T1555, T1555.004
 image      : C:\\Users\\kr\\AppData\\Local\\Temp\\svchost.exe
 imageLoaded: C:\\Users\\kr\\AppData\\Local\\Temp\\vaultcli.dll
 ```
+
+![Scenario 3 - Wazuh Discover, rule 92158 CRITICAL alert](../docs/Scenario%203%20%E2%80%94%20Credential%20Vault%20DLL%20Load%20from%20High-Risk%20Path%20(T1555.004).png)
+
+*Wazuh Discover - Scenario 3: rule `92158` (level 15, CRITICAL) - two independent firings, `vaultcli.dll` loaded by the masqueraded `svchost.exe` from `AppData\Local\Temp`.*
 
 Confirmed with 2 independent firings captured in Wazuh Discover, same rule ID, same description, same tiered path logic.
 
@@ -285,6 +297,8 @@ The gap did not translate into a detection failure: rule `61618` (T1055) fires i
               (92027 evaluated against this event, but its parentImage
                condition does not match Temp\svchost.exe - rule does not fire)
 ```
+
+See the Scenario 2 screenshot above for the raw Discover evidence of this chain.
 
 This is defense in depth working as designed: a path-based rule (`92027`) has a blind spot for a masqueraded parent, but an identity-based rule (`61618`) evaluating the same attack chain from a different angle closes it. It is nonetheless a real limitation worth fixing - a future revision of `92027` should either chain from `if_sid>61618` to add masqueraded-parent coverage, or accept the current asymmetry as intentional and document it as such in the rule's own description field.
 
