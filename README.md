@@ -33,7 +33,7 @@ Optimized for Wazuh, third-party SIEM/XDR platforms, and proactive threat huntin
 
 Endpoint visibility is the cornerstone of modern Detection Engineering. With the release of **Windows 11 (24H2+)**, Sysmon has transitioned into a **Native OS Feature**, fundamentally changing how security teams manage lifecycle, updates, and driver stability.
 
-This repository serves as a centralized hub for production-ready configurations, bridging the gap between legacy Sysinternals deployments and the new native integration with full MITRE ATT&CK alignment and Wazuh ruleset coverage.
+This repository serves as a centralized hub for production-ready configurations, connecting legacy Sysinternals deployments to the new native integration with full MITRE ATT&CK alignment and Wazuh ruleset coverage.
 
 Legacy Sysmon configurations were traditionally designed around a **"collect-first, filter-later"** model. This often resulted in:
 
@@ -456,6 +456,8 @@ Wazuh loads rules alphabetically. The group tag `sysmon_event1` is registered wh
 | `92158` | **15** | Loading process path in `Temp` / `AppData` / `Public` / `Downloads` | **CRITICAL** - treat as active credential dump |
 | `92159` | 10 | Third-party process outside Windows system paths (e.g. MobaXterm) | **ALERT** - verify expected behavior on this host |
 
+> **Note on rule numbering:** rule ID `92153` above refers to this project's own Tier 0 base anchor (level 0). The Wazuh server's default ruleset also ships a rule numbered `92153` with different logic (a generic path-based Image Load detection, level 10) - this is a pre-existing ID collision between the two rulesets, not a duplicate or conflicting definition of the same rule. It surfaces in the `adv_simulation/native_vs_legacy.md` report, where the default-ruleset `92153` fires independently during Legacy testing. See that report's Finding 6 for the full analysis.
+
 **OS exclusions confirmed via live Windows 11 24H2+ telemetry:**
 
 - `VaultCmd.exe` - legitimate vault management tool
@@ -536,7 +538,7 @@ The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 
 ```text
 Manager  : Wazuh 4.14.4 (Ubuntu)
-Agent    : Win-Dell-10 · Windows 11 24H2+ (KB5077241)
+Agent    : LABDESK · Windows 11 24H2+ (KB5077241)
 Analyzer : wazuh-analysisd -t → 0 warnings, exit 0
 
 [05:12:26] Rule 92027 | L4  | EID 1 | T1059.001 · PowerShell spawned PowerShell
