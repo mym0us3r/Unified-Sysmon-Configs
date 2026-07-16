@@ -553,7 +553,8 @@ EID 4688 (Rule 67027) firing in parallel - dual provider visibility confirmed âœ
 
 This project is built upon the foundational work of the cybersecurity community and official Microsoft resources:
 
-- **[Wazuh Team](https://wazuh.com/)** - Premier open-source SIEM/XDR engine and continuous community support
+- **[Wazuh Team](https://wazuh.com/?utm_source=ambassadors&utm_medium=referral&utm_campaign=ambassadors+program)** - Premier open-source SIEM/XDR engine and continuous community support
+- **[Wazuh Ambassador Program](https://wazuh.com/ambassadors-program/?utm_source=ambassadors&utm_medium=referral&utm_campaign=ambassadors+program)** Anthony Faruna & Katia Bukcovac - for the patient, detailed feedback that shaped this article into its final form
 - **[Microsoft Learn - Enable Sysmon](https://learn.microsoft.com/pt-br/windows/security/operating-system-security/sysmon/how-to-enable-sysmon)** - Official guide for native Sysmon enablement
 - **[Native Sysmon Announcement](https://techcommunity.microsoft.com/blog/windows-itpro-blog/native-sysmon-functionality-coming-to-windows/4468112)** - Microsoft Tech Community (Mark Russinovich)
 - **[KB5077241](https://www.catalog.update.microsoft.com/Search.aspx?q=KB5077241)** - Official update catalog entry for Sysmon Native integration
