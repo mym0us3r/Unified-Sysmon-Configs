@@ -385,21 +385,21 @@ Two independent failure modes - both producing silent, zero-alert results.
 
 > **Important clarification:** `win.eventdata.*` fields are not exclusive to Sysmon Native. They have been available with Legacy Sysmon since Wazuh 3.8.0, when the agent is configured with `log_format>eventchannel`. What KB5077241 changed was the **deployment model** (Sysinternals binary to Windows Optional Feature), the **schema version** (4.50 to 4.91, unlocking new capabilities including extended OriginalFileName coverage and nested rule grouping), and the **lifecycle management** (manual updates to Windows Update). The fields and the decoder remain the same.
 
-**Failure 2 - Runtime evaluation path:** All attempts using `if_sid>60000` as a base anchor for the new native detection rules failed silently in production. The Wazuh rule engine walks the tree **depth-first** and stops at rule `61603` (EID dispatcher), never reaching a sibling branch anchored at `60000`.
+**Failure 2 - Runtime evaluation path:** All attempts using `if_sid>60000` as a base anchor for the new native detection rules failed silently in production. The Wazuh rule engine walks the tree **depth-first** and stops at rule `61603` (EID dispatcher), never reaching a sibling branch anchored at `60000`. Fix: introduce the anchor `92000` chained through `if_group>sysmon_event1` (reachable from `61603`), then chain the new detection rules to that anchor via `if_sid>92000`.
 
-**The architectural fix: `if_group>sysmonEventX`**
+> **Important clarification:** `if_group>sysmon_event1` is not a new mechanism introduced by this rewrite. It is the same chaining mechanism the default Wazuh ruleset already uses - the stock anchor `92000` and its 82 child rules are all siblings under that same tag, with no explicit parent-child hierarchy between them. What this rewrite changes is the **child-chaining model**: instead of every detection rule sharing the same group tag as a sibling (which means an unrelated rule can fire off that generic tag if its own conditions happen to match), each rule in this ruleset chains via `if_sid>92000`, pointing directly at the anchor. That is a narrower, more auditable dependency graph - not a discovery of `if_group` itself.
 
 ```text
 Event arrives (Microsoft-Windows-Sysmon/Operational)
   -> 60004  (channel routing)
     -> 61600 (severity INFORMATION)
       -> 61603 (EID 1, assigns runtime group: sysmon_event1)
-        -> 92000 (if_group>sysmon_event1 + providerName)   <- FIRES ✅
-          -> 92027 (T1059.001 · PowerShell chain)           <- FIRES ✅
-          -> 92057 (T1059.001 · EncodedCommand · level 12)  <- FIRES ✅
+        -> 92000 (if_group>sysmon_event1 + providerName)                   <- FIRES ✅  [anchor]
+          -> 92027 (if_sid>92000 · T1059.001 · PowerShell chain)           <- FIRES ✅
+          -> 92057 (if_sid>92000 · T1059.001 · EncodedCommand · level 12)  <- FIRES ✅
 ```
 
-`if_group` references the **runtime group tag** assigned during event processing - no load-order dependency, no compile-time SID resolution failure.
+`if_group` references the **runtime group tag** assigned during event processing at the anchor level - no load-order dependency, no compile-time SID resolution failure.
 
 ---
 
@@ -408,7 +408,7 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 | File | Legacy | Native | Delta | EID | Coverage |
 |---|---|---|---|---|---|
 | `0595-win-sysmon_rules.xml` | 56 | 52 | -4 | 1-23 | EventChannel infrastructure routing + EID 1 process anomaly |
-| `0800-sysmon_id_1.xml` | 26 | **83** | +57 | 1 | Process Creation - Native anchor + full detection chain |
+| `0800-sysmon_id_1.xml` | 82 | **83** | +1 | 1 | Process Creation - Native anchor + full detection chain |
 | `0810-sysmon_id_3.xml` | 10 | 11 | +1 | 3 | Network Connection |
 | `0820-sysmon_id_7.xml` | 7 | 10 | +3 | 7 | Image Load - vaultcli.dll tiered detection |
 | `0830-sysmon_id_11.xml` | 28 | 29 | +1 | 11 | File Create |
@@ -417,9 +417,9 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 | `0870-sysmon_id_8.xml` | 4 | 5 | +1 | 8 | CreateRemoteThread |
 | `0945-sysmon_id_10.xml` | 3 | 4 | +1 | 10 | Process Access |
 | `0950-sysmon_id_20.xml` | 2 | 3 | +1 | 20 | WMI Consumer Activity |
-| **GRAND TOTAL** | **185** | **232** | **+47** | **8 EIDs** | |
+| **GRAND TOTAL** | **241** | **232** | **-9** | **8 EIDs** | |
 
-> The delta in `0595` and `0850` reflects removal of **legacy Sysinternals dispatcher rules** (`if_sid>18100` + `sysmon.*` fields) that are architecturally incompatible with the Native pipeline. **Zero detection coverage was lost.**
+> The delta in `0595` and `0850` reflects removal of **legacy Sysinternals dispatcher rules** (`if_sid>18100` + `sysmon.*` fields) that are architecturally incompatible with the Native pipeline. `0800` shows the rewrite kept essentially the same rule volume as the stock ruleset (82 to 83) while restructuring the chaining model from shared `if_group` siblings to explicit `if_sid>92000` parent-child references (see "Failure 2" above). **Net total is 9 rules lower than Legacy - consolidation and dead-code removal, not coverage loss.**
 
 ---
 
