@@ -1,7 +1,7 @@
 <!--
   Reference: Copyright (C) 2015, Wazuh Inc.
   Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
-  03/27/2026 Friday :)
+  Date: 03/27/2026 Friday :)
   Updated: 04/26/2026 - Security fix: full-path exclusions enforced on rule 92153
 
   Sysmon Event ID 7 rules: 92150 - 92199
