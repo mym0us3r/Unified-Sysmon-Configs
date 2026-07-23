@@ -1,7 +1,7 @@
 <!--
   Reference: Copyright (C) 2015, Wazuh Inc.
   Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
-  03/27/2026 Friday :)
+  Date: 03/27/2026 Friday :)
 
   Sysmon Process Anomaly rules: 184666 - 184777
   Rewritten for Sysmon Native (Windows 11 24H2+)
@@ -29,6 +29,12 @@
     Detection logic: suspicious process fires at level 12,
     legitimate parent image silences the alert at level 0.
     Path anchor added ($) to all image fields to prevent partial matches.
+
+    NOTE ON RULE NUMBERING: IDs 184666-184777 intentionally reuse the same
+    range as the Wazuh server's stock ruleset (e.g. stock rule 184666,
+    svchost.exe / sysmon.image check). This is not an accidental collision -
+    these are different rules by design, extending/replacing the stock
+    logic under the same numbering family. See README.md for details.
 -->
 
 <group name="sysmon,sysmon_process-anomalies,windows,">
