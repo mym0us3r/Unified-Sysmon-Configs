@@ -1,0 +1,104 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 07/24/2026 Friday
+
+  Sysmon Process Tampering rules: 100900 - 100910
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 25: ProcessTampering - Process Hollowing (T1055.012) and
+          Process Herpaderping (T1055.013) detection
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  CONTEXT:
+    EID 25 was added in Sysmon v13 (2021) specifically to catch two
+    process-tampering techniques: Hollowing (replacing a legitimate
+    process's mapped image with malicious code) and Herpaderping
+    (modifying the on-disk file after it has been mapped into memory,
+    creating a mismatch between what's on disk and what's running).
+    Both are classic defense-evasion techniques used to make malicious
+    code appear as a trusted process in task lists and process trees.
+
+  KNOWN LIMITATION - IMPORTANT, READ BEFORE DEPLOYING:
+    This event does NOT detect the full family of related techniques.
+    Process Ghosting (a newer variant documented by Elastic Security)
+    is specifically designed to evade the exact detection window EID 25
+    relies on - it deletes the backing file before Sysmon's check can
+    run. EID 25 catches Hollowing and Herpaderping; it is not a
+    catch-all for this technique class. Layer with other detections
+    (e.g. 0870 CreateRemoteThread, 0850 parent/image anomaly chain).
+
+    The sysmon-native.xml Type field values ("Image is replaced" for
+    Hollowing, "Image is locked for access" for Herpaderping) were
+    corrected on 2026-07-24 based on documentation from TrustedSec's
+    SysmonCommunityGuide and a captured real EID 25 event example
+    (ultimatewindowssecurity.com) - NOT confirmed against a live event
+    on this project's own endpoint, since no EID 25 has fired here yet.
+    If the field values turn out to be wrong once a real event is
+    captured, both the Sysmon config AND this file's field references
+    would need correction.
+
+  MIGRATION NOTES:
+    ANCHOR: if_group>sysmon_event_25, assigned by rule 100851 in
+    0595-win-sysmon_rules.xml. Rule ID chosen directly in the officially
+    reserved custom-rule range (100000-120000) from the start - not
+    reused from the 61xxx sequence, avoiding the mistake documented in
+    0595's header regarding this exact slot.
+    This is a NEW file - not yet field-tested (no live EID 25 event
+    available to validate against on this endpoint). Validate with
+    wazuh-analysisd -t and, if a controlled Hollowing/Herpaderping test
+    can be safely run, a live field test before treating as
+    production-confirmed - consistent with every other rule in this
+    project.
+-->
+
+<group name="sysmon,sysmon_eid25,windows,">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR - EID 25 (Process Tampering)
+       Low-volume, high-value event by design (Sysmon's own
+       documentation describes it as such) - anchor kept at level 0
+       per this project's dominant convention; the event itself
+       reaching Wazuh at all is already a strong signal, but the
+       child rules below carry the actual severity.
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100900" level="0">
+    <if_group>sysmon_event_25</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Native Sysmon [EID 25]: Process tampering detected - $(win.eventdata.image)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1055.012 - Process Hollowing
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100901" level="15">
+    <if_sid>100900</if_sid>
+    <field name="win.eventdata.type" type="pcre2">(?i)Image is replaced</field>
+    <description>CRITICAL: Process Hollowing detected - $(win.eventdata.image) image replaced in memory</description>
+    <mitre>
+      <id>T1055.012</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1055.013 - Process Herpaderping
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100902" level="15">
+    <if_sid>100900</if_sid>
+    <field name="win.eventdata.type" type="pcre2">(?i)Image is locked for access</field>
+    <description>CRITICAL: Process Herpaderping detected - $(win.eventdata.image) on-disk image tampered post-mapping</description>
+    <mitre>
+      <id>T1055.013</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+</group>
