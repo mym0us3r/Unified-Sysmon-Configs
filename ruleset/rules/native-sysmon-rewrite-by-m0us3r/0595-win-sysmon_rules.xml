@@ -3,7 +3,7 @@
   Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
   Date: 03/27/2026 Friday :)
 
-  Sysmon EventChannel Infrastructure rules: 61600 - 61651
+  Sysmon EventChannel Infrastructure rules: 61600 - 61653
   Rewritten for Sysmon Native (Windows 11 24H2+)
   Provider: Microsoft-Windows-Sysmon
   EID 1-23: EventChannel routing - eventID dispatch and runtime group assignment
@@ -36,6 +36,13 @@
     rules inside) plus 11 orphaned comment lines. wazuh-analysisd -t
     correctly rejected this: "ERROR: Group 'group' without any rule."
     The empty wrapper and orphaned comments were removed in this version.
+
+    DISPATCH EXPANSION (2026-07-24): added 61652 (EID 24, ClipboardChange)
+    and 61653 (EID 29, FileExecutableDetected). Both event types were
+    already collected by sysmon-native.xml but had no if_group dispatch
+    here, so no Wazuh rule could ever chain to them. Added to support new
+    behavioral coverage in 0955-sysmon_id_24.xml (ClickFix / T1204.004)
+    and 0960-sysmon_id_29.xml (new executable detection).
 -->
 
 <var name="MS_FREQ">8</var>
@@ -252,6 +259,22 @@
     <description>Sysmon - Event 23: File deleted and archived</description>
     <options>no_full_log</options>
     <group>sysmon_event_23,</group>
+  </rule>
+
+  <rule id="61652" level="0">
+    <if_sid>61600</if_sid>
+    <field name="win.system.eventID">^24$</field>
+    <description>Sysmon - Event 24: Clipboard content changed</description>
+    <options>no_full_log</options>
+    <group>sysmon_event_24,</group>
+  </rule>
+
+  <rule id="61653" level="0">
+    <if_sid>61600</if_sid>
+    <field name="win.system.eventID">^29$</field>
+    <description>Sysmon - Event 29: New executable file detected</description>
+    <options>no_full_log</options>
+    <group>sysmon_event_29,</group>
   </rule>
 
 </group>
