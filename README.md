@@ -179,6 +179,7 @@ Unified-Sysmon-Configs/
 │           ├── 0820-sysmon_id_7.xml             #   10 rules · EID 7 Image Load
 │           ├── 0830-sysmon_id_11.xml            #   29 rules · EID 11 File Create
 │           ├── 0840-sysmon_id_6.xml             #    4 rules · EID 6 Driver Load (BYOVD)
+│           ├── 0845-sysmon_id_25.xml            #    3 rules · EID 25 Process Tampering (Hollowing/Herpaderping)
 │           ├── 0850-sysmon_process_anomalies.xml #  24 rules · EID 1 Process Anomaly
 │           ├── 0860-sysmon_id_13.xml            #   11 rules · EID 13 Registry Value Set
 │           ├── 0870-sysmon_id_8.xml             #    5 rules · EID 8 CreateRemoteThread
@@ -188,7 +189,7 @@ Unified-Sysmon-Configs/
 │           ├── 0950-sysmon_id_20.xml            #    3 rules · EID 20 WMI Consumer
 │           ├── 0955-sysmon_id_24.xml            #    2 rules · EID 24 Clipboard Change (ClickFix)
 │           └── 0960-sysmon_id_29.xml            #    2 rules · EID 29 New Executable Detected
-│                                                #  223 rules total · 13 EIDs with behavioral coverage
+│                                                #  226 rules total · 14 EIDs with behavioral coverage
 │
 ├── adv_simulation/                      # Adversary Simulation · Native vs Legacy
 │   └── native_vs_legacy.md             # Comparative detection validation report
@@ -373,8 +374,8 @@ Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion - te
 
 > **Production-validated · Wazuh 4.14.4 · Windows 11 24H2+ (KB5077241) · MITRE ATT&CK v15 · Zero warnings on `wazuh-analysisd -t`**
 
-![rules](https://img.shields.io/badge/rules-223-brightgreen)
-![EIDs](https://img.shields.io/badge/EIDs-13-blue)
+![rules](https://img.shields.io/badge/rules-226-brightgreen)
+![EIDs](https://img.shields.io/badge/EIDs-14-blue)
 ![anchor](https://img.shields.io/badge/anchor-if__group-orange)
 ![status](https://img.shields.io/badge/status-production--validated-success)
 
@@ -424,6 +425,7 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 | `0820-sysmon_id_7.xml` | 7 | 10 | +3 | 7 | Image Load - vaultcli.dll tiered detection |
 | `0830-sysmon_id_11.xml` | 28 | 29 | +1 | 11 | File Create |
 | `0840-sysmon_id_6.xml` | 0 *(new)* | 4 | +4 | 6 | Driver Load - BYOVD / EDR-killer detection |
+| `0845-sysmon_id_25.xml` | 0 *(new)* | 3 | +3 | 25 | Process Tampering - Hollowing (T1055.012) / Herpaderping (T1055.013) |
 | `0850-sysmon_process_anomalies.xml` | 39 *(was 0330)* | 24 | -15 | 1 | Process Anomaly chain (parent/image validation) |
 | `0860-sysmon_id_13.xml` | 10 | 11 | +1 | 13 | Registry Value Set |
 | `0870-sysmon_id_8.xml` | 4 | 5 | +1 | 8 | CreateRemoteThread |
@@ -433,13 +435,13 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 | `0950-sysmon_id_20.xml` | 2 | 3 | +1 | 20 | WMI Consumer Activity |
 | `0955-sysmon_id_24.xml` | 0 *(new)* | 2 | +2 | 24 | Clipboard Change - ClickFix (T1204.004) detection |
 | `0960-sysmon_id_29.xml` | 0 *(new)* | 2 | +2 | 29 | New Executable Detected |
-| **GRAND TOTAL** | **241** | **223** | **-18** | **13 EIDs** | |
+| **GRAND TOTAL** | **241** | **226** | **-15** | **14 EIDs** | |
 
 > **Duplicate rule removal (2026-07-23):** `0595` originally shipped 24 process-anomaly rules (13 parent + 11 "legitimate parent image" silencer children, IDs `61618-61641`) that were byte-for-byte identical - field by field, description included - to `0850`'s `184666-184777` family. Both chained from the same `if_group>sysmon_event1` anchor, so every matching event fired two identical alerts under two different rule IDs. Confirmed by direct diff, not assumption. `0850` is the dedicated file for this detection family (and a superset - it covers 11 additional binaries the `0595` copy never did), so the 24 duplicates were removed from `0595`, which is now infrastructure-only, matching its filename and original scope.
 
 > **Coverage expansion (2026-07-24):** `0840`, `0880`, `0890`, `0955`, and `0960` add behavioral detection for five Event IDs that had **never had dedicated Wazuh coverage** - not in this project's earlier state, and not in Wazuh's own stock ruleset either (confirmed directly against the upstream `wazuh/wazuh-ruleset` repository, which only ever defined group dispatch up to EID 15 and behavioral rules for EID 1). Each addition maps to a technique with significant 2026 real-world prevalence: EID 6 to BYOVD/EDR-killer tooling (54 documented tools abusing 35 signed drivers as of March 2026), EID 24 to ClickFix (T1204.004 - the most common initial-access technique in 2025-2026 threat reporting, used by both APT28/Kimsuky/MuddyWater and ransomware operators), EID 9 to raw-disk credential extraction (SAM/NTDS.dit via Volume Shadow Copy), EID 17/18 to Cobalt Strike named-pipe C2, and EID 29 to new-executable drops. `0595`'s dispatch table was extended from EID 1-23 to EID 1-29 to support this. Full technical writeup, including the two `sysmon-native.xml` bugs found during this expansion, below.
 
-> The delta in `0595` and `0850` reflects removal of **legacy Sysinternals dispatcher rules** (`if_sid>18100` + `sysmon.*` fields) that are architecturally incompatible with the Native pipeline, plus the duplicate removal noted above for `0595`, offset by the five new coverage files. `0800` shows the rewrite kept essentially the same rule volume as the stock ruleset (82 to 83) while restructuring the chaining model from shared `if_group` siblings to explicit `if_sid>92000` parent-child references (see "Failure 2" above). **Net total is 18 rules lower than Legacy while covering 5 more EIDs - consolidation and duplicate elimination outweighing new coverage, not coverage loss.**
+> The delta in `0595` and `0850` reflects removal of **legacy Sysinternals dispatcher rules** (`if_sid>18100` + `sysmon.*` fields) that are architecturally incompatible with the Native pipeline, plus the duplicate removal noted above for `0595`, offset by the six new coverage files. `0800` shows the rewrite kept essentially the same rule volume as the stock ruleset (82 to 83) while restructuring the chaining model from shared `if_group` siblings to explicit `if_sid>92000` parent-child references (see "Failure 2" above). **Net total is 15 rules lower than Legacy while covering 6 more EIDs - consolidation and duplicate elimination outweighing new coverage, not coverage loss.**
 
 ---
 
@@ -454,6 +456,7 @@ Wazuh loads rules alphabetically. The group tag `sysmon_event1` is registered wh
 0820  <- EID 7  · if_group>sysmon_event7
 0830  <- EID 11 · if_group>sysmon_event_11
 0840  <- EID 6  · if_group>sysmon_event6
+0845  <- EID 25 · if_group>sysmon_event_25
 0850  <- EID 1 process anomaly · if_group>sysmon_event1  <- MUST be > 0595
 0860  <- EID 13 · if_group>sysmon_event_13
 0870  <- EID 8  · if_group>sysmon_event8
@@ -507,7 +510,7 @@ This rewrite does **not** replace or suppress EID 4688 (Security-Auditing). Both
 | Provider | Rule | Level | Value |
 |---|---|---|---|
 | `Microsoft-Windows-Security-Auditing` | 67027 | 3 | Process telemetry - always-on baseline |
-| `Microsoft-Windows-Sysmon` | 92000-92083 (0800) · 184666-184777 (0850) · 100600-100801 (0840/0880/0890/0955/0960) | 0-15 | MITRE-aligned behavioral intelligence |
+| `Microsoft-Windows-Sysmon` | 92000-92083 (0800) · 184666-184777 (0850) · 100600-100902 (0840/0845/0880/0890/0955/0960) | 0-15 | MITRE-aligned behavioral intelligence |
 
 > **EID 4688** = *"who was born"* · **Sysmon EID 1** = *"what it is doing and why it matters"*
 
@@ -520,7 +523,7 @@ This rewrite does **not** replace or suppress EID 4688 (Security-Auditing). Both
 | **Execution** | T1059, T1059.001, T1059.003, T1059.005, T1059.007, T1047, T1204, T1204.002, T1204.004, T1569.002 |
 | **Persistence** | T1543.003, T1546, T1546.003, T1546.011, T1547.001, T1547.006 |
 | **Privilege Escalation** | T1068, T1548, T1548.002 |
-| **Defense Evasion** | T1006, T1027, T1027.004, T1036, T1036.002, T1036.003, T1070.004, T1112, T1140, T1218, T1562, T1562.001, T1574 |
+| **Defense Evasion** | T1006, T1027, T1027.004, T1036, T1036.002, T1036.003, T1055.012, T1055.013, T1070.004, T1112, T1140, T1218, T1562, T1562.001, T1574 |
 | **Credential Access** | T1003.001, T1003.002, T1003.003, T1555, T1555.004 |
 | **Discovery** | T1018, T1033, T1069, T1082, T1087, T1135, T1518.001 |
 | **Lateral Movement** | T1021.001, T1021.002, T1021.004, T1021.006 |
@@ -551,6 +554,7 @@ The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 0820  EID 7:  Image Load - DLL load detection with vaultcli.dll tiered architecture
 0830  EID 11: File Create - Suspicious file creation in high-risk paths
 0840  EID 6:  Driver Load - BYOVD / EDR-killer detection
+0845  EID 25: Process Tampering - Hollowing and Herpaderping detection
 0850  EID 1:  Process Creation - Parent/Image anomaly detection chain
 0860  EID 13: Registry Value Set - Persistence and defense evasion via registry
 0870  EID 8:  CreateRemoteThread - Cross-process injection and lateral movement
@@ -564,15 +568,24 @@ The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 
 ---
 
-### Coverage Expansion - Five EIDs With No Prior Wazuh Detection (2026-07-24)
+### Coverage Expansion - Six EIDs With No Prior Wazuh Detection (2026-07-24)
 
-`0840`, `0880`, `0890`, `0955`, and `0960` add behavioral detection for EID 6, 9, 17/18, 24, and 29 - none of which had dedicated Wazuh rules before, in this project or in Wazuh's own default ruleset. Confirmed directly against the archived upstream `wazuh/wazuh-ruleset` repository: the stock dispatch table stops at EID 15, and stock behavioral coverage exists only for EID 1.
+`0840`, `0845`, `0880`, `0890`, `0955`, and `0960` add behavioral detection for EID 6, 9, 17/18, 24, 25, and 29 - none of which had dedicated Wazuh rules before, in this project or in Wazuh's own default ruleset. Confirmed directly against the archived upstream `wazuh/wazuh-ruleset` repository: the stock dispatch table stops at EID 15, and stock behavioral coverage exists only for EID 1.
 
-**`sysmon-native.xml` fix required for EID 24 (ClickFix):** the config previously excluded `chrome.exe`, `msedge.exe`, and `firefox.exe` from `ClipboardChange` telemetry. This directly conflicted with detecting ClickFix (T1204.004) - the technique's clipboard write happens via JavaScript *inside the browser process*, so the exclusion silenced the one signal needed to catch it. Fixed in `sysmon-native.xml` v1.3; the Office-app exclusion (unrelated to ClickFix) was kept.
+**`sysmon-native.xml` fixes (v1.3 and v1.4), and a deployment gap found along the way:**
 
-> **Known limitation:** correlating the EID 24 clipboard write with a subsequent EID 1 scripting-interpreter launch (the actual ClickFix signature) is not implemented. Wazuh's `if_matched_sid` mechanism is built for repeated-match/flood detection - its `frequency` attribute has a documented minimum of 2, and a 2021 Wazuh GitHub issue (#7929) confirms undocumented behavior when used without `frequency`/`timeframe`. There is no verified, documented way to express "single event A, then single event B within N seconds" with this mechanism. `0955` ships the anchor/visibility rule only; cross-referencing the two events is a manual Discover/dashboard correlation for now.
+- **EID 24 (ClickFix, v1.3):** the config previously excluded `chrome.exe`, `msedge.exe`, and `firefox.exe` from `ClipboardChange` telemetry. This directly conflicted with detecting ClickFix (T1204.004) - the technique's clipboard write happens via JavaScript *inside the browser process*, so the exclusion silenced the one signal needed to catch it. Fixed; the Office-app exclusion (unrelated to ClickFix) was kept.
+- **Deployment gap:** the v1.3 fix above was written and delivered the same day it was found, but was never actually applied to the deployed config - confirmed by direct inspection days later, after the ClickFix Wazuh rule (`0955`) had already been built and "validated" against a config that was silently still excluding the exact telemetry it needed. A reminder that `wazuh-analysisd -t` passing clean only proves the *rule* loads correctly - it says nothing about whether the underlying Sysmon config was ever actually redeployed.
+- **EID 25 `Type` field (v1.4, documentation-based, not field-confirmed):** `ProcessTampering`'s filter checked for the literal string `Image replaced`. Multiple independent sources (TrustedSec's SysmonCommunityGuide, a captured real EID 25 event from ultimatewindowssecurity.com) document the actual Sysmon-generated value as `Image is replaced` - with "is" in the middle. Corrected. Unlike the `Signed` field fix (EID 6, confirmed via a live LABDESK event capture), this one has **not** been confirmed against a real EID 25 event on this project's own endpoint - none has fired here to inspect. Flagged as such in the config and rule file comments rather than presented as verified.
+- **EID 25 coverage gap (v1.4):** the config only filtered for `Image is replaced` (Process Hollowing). The second documented tampering type, `Image is locked for access` (Process Herpaderping), was not filtered for at all - meaning Herpaderping, if it occurred, generated no telemetry regardless of the string issue above. Added as a second rule.
 
-**Rule ID range correction:** the first version of this expansion used ad hoc IDs in the `92xxx` range this project already used internally, without checking them against Wazuh's *own* stock ruleset. Two of them (`92500`, `92600`) collided with `0850-audit_rules.xml`, a completely unrelated stock file, causing `wazuh-analysisd -t` to silently keep only the first-loaded definition of six rules. All fifteen new rule IDs were moved to `100000-120000`, the range Wazuh documentation explicitly reserves for custom rules and commits to never using for future stock rules.
+> **Known limitation (EID 24):** correlating the clipboard write with a subsequent EID 1 scripting-interpreter launch (the actual ClickFix signature) is not implemented. Wazuh's `if_matched_sid` mechanism is built for repeated-match/flood detection - its `frequency` attribute has a documented minimum of 2, and a 2021 Wazuh GitHub issue (#7929) confirms undocumented behavior when used without `frequency`/`timeframe`. There is no verified, documented way to express "single event A, then single event B within N seconds" with this mechanism. `0955` ships the anchor/visibility rule only; cross-referencing the two events is a manual Discover/dashboard correlation for now.
+
+> **Known limitation (EID 25):** this event does not detect the full family of process-tampering techniques. Process Ghosting, a variant documented by Elastic Security, is specifically designed to evade the detection window EID 25 relies on. `0845` catches Hollowing and Herpaderping only.
+
+**Rule ID range correction, twice:** the first version of this expansion used ad hoc IDs in the `92xxx` range this project already used internally, without checking them against Wazuh's *own* stock ruleset. Two of them (`92500`, `92600`) collided with `0850-audit_rules.xml`, a completely unrelated stock file. All new rule IDs were moved to `100000-120000`, the range Wazuh documentation explicitly reserves for custom rules. The dispatch rule for EID 29 initially continued the project's internal `61xxx` sequence at `61653` - which turned out to already be spoken for: [Zafer Balkan's Wazuh/Sysmon field mapping](https://zaferbalkan.com/wazuh-sysmon-guidance/) documents `61653` as the slot Wazuh's own numbering convention reserves for EID 25 (`sysmon_event_25`), a rule this project hadn't implemented yet at the time. Reusing it for EID 29 would have squatted on a slot likely to see real coverage eventually - which it did, the same day, once EID 25 was added. Moved to `100850` instead of guessing another `61xxx` number.
+
+Worth noting: this project's own dispatch rule for EID 24 (`61652`) landed on the exact same ID Zafer's mapping documents - independently, from following the file's existing sequential pattern, not from reading his article. The EID 29 collision only surfaced because his table happened to also document the *next* slot.
 
 | EID | File | Technique | Real-world relevance (2026) |
 |---|---|---|---|
@@ -580,6 +593,7 @@ The Wazuh `windows_eventchannel` decoder doubles backslashes internally:
 | 9 | `0880` | Raw disk read (SAM/NTDS.dit via VSS) | Classic credential-dumping technique bypassing file-lock monitoring |
 | 17/18 | `0890` | Named pipe C2 | Cobalt Strike's default SMB beacon mechanism; catches default pipe names only, evaded by custom Malleable C2 profiles |
 | 24 | `0955` | ClickFix (T1204.004) | Most common initial-access technique in 2025-2026 threat reporting (Microsoft Defender Experts: 47% of initial-access cases); used by APT28, Kimsuky, MuddyWater, and ransomware operators (Qilin, Interlock) |
+| 25 | `0845` | Process Hollowing (T1055.012) / Herpaderping (T1055.013) | Long-standing defense-evasion class, still cited in current EDR-evasion research; does not cover the newer Process Ghosting variant |
 | 29 | `0960` | New executable file drop | Already observed firing in this project's own production testing (`T1204-New-Executable`, LABDESK, 2026-07-23) before a Wazuh rule existed to route it |
 
 ---
