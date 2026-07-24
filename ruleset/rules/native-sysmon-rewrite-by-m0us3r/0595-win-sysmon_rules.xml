@@ -30,6 +30,12 @@
     binaries these 24 rules never did) and is the file that stays.
     This file (0595) is now infrastructure-only, matching its filename
     and its original intended scope.
+
+    FOLLOW-UP FIX (2026-07-24): the removal above initially left an empty
+    <group name="windows,sysmon,sysmon_process-anomalies,"> wrapper (zero
+    rules inside) plus 11 orphaned comment lines. wazuh-analysisd -t
+    correctly rejected this: "ERROR: Group 'group' without any rule."
+    The empty wrapper and orphaned comments were removed in this version.
 -->
 
 <var name="MS_FREQ">8</var>
@@ -250,28 +256,6 @@
 
 </group>
 
-<!-- ================================================================
-     PROCESS ANOMALY DETECTION - EID 1
-     Uses if_group>sysmon_event1 + providerName field check.
-     if_group references the runtime group tag assigned by rule 61603
-     above during event processing. No load-order dependency.
-     Logic: suspicious image fires at level 12, legitimate parent
-     image silences the alert at level 0 (override pattern).
-================================================================ -->
-<group name="windows,sysmon,sysmon_process-anomalies,">
-
-  <!-- T1055 - svchost.exe -->
-<!-- T1055 - lsm.exe -->
-<!-- T1055 - csrss.exe -->
-<!-- T1055 - lsass.exe -->
-<!-- T1055 - winlogon.exe -->
-<!-- T1055 - wininit.exe -->
-<!-- T1055 - smss.exe -->
-<!-- T1055 - taskhost.exe -->
-<!-- T1055 - services.exe -->
-<!-- T1055 - dllhost.exe -->
-<!-- T1055 - explorer.exe -->
-</group>
 
 <!-- ================================================================
      FREQUENCY RULES - Multiple Sysmon warning/error events
