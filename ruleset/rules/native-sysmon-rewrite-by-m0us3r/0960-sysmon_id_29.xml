@@ -32,10 +32,9 @@
   dropped by a scripting interpreter) carries the real signal.
 
   MIGRATION NOTES:
-    ANCHOR: if_group>sysmon_event_29, assigned by rule 61653 in
-    0595-win-sysmon_rules.xml (added 2026-07-24 alongside this file -
-    EID 29 previously had no dispatch rule at all, despite already
-    being observed firing in production testing).
+    ANCHOR: if_group>sysmon_event_29, assigned by rule 100850 in
+    0595-win-sysmon_rules.xml (uses the officially reserved custom-rule
+    range, not the 61xxx dispatch sequence - see 0595's header for why).
     This is a NEW file - not yet field-tested as a Wazuh rule
     (the underlying Sysmon telemetry has been field-tested). Validate
     with wazuh-analysisd -t and a live test before treating as
