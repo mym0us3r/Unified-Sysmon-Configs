@@ -3,7 +3,8 @@
   Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
   Date: 03/27/2026 Friday :)
 
-  Sysmon EventChannel Infrastructure rules: 61600 - 61653
+  Sysmon EventChannel Infrastructure rules: 61600 - 61652
+  (EID 29 dispatch uses 100850 - see DISPATCH EXPANSION note below)
   Rewritten for Sysmon Native (Windows 11 24H2+)
   Provider: Microsoft-Windows-Sysmon
   EID 1-23: EventChannel routing - eventID dispatch and runtime group assignment
@@ -38,11 +39,24 @@
     The empty wrapper and orphaned comments were removed in this version.
 
     DISPATCH EXPANSION (2026-07-24): added 61652 (EID 24, ClipboardChange)
-    and 61653 (EID 29, FileExecutableDetected). Both event types were
+    and 100850 (EID 29, FileExecutableDetected). Both event types were
     already collected by sysmon-native.xml but had no if_group dispatch
     here, so no Wazuh rule could ever chain to them. Added to support new
     behavioral coverage in 0955-sysmon_id_24.xml (ClickFix / T1204.004)
     and 0960-sysmon_id_29.xml (new executable detection).
+
+    EID 29 dispatch was originally assigned ID 61653, continuing the
+    61xxx sequence. Corrected the same day: Zafer Balkan's Wazuh/Sysmon
+    field mapping (https://zaferbalkan.com/wazuh-sysmon-guidance/)
+    documents 61653 as the slot Wazuh's own numbering convention reserves
+    for EID 25 (sysmon_event_25, ProcessTampering - not implemented by
+    this project or by stock Wazuh). Reusing it for EID 29 would have
+    squatted on a slot that may see official coverage later. Moved to
+    100850, in the range Wazuh documentation reserves for custom rules,
+    rather than guessing another 61xxx number - the same mistake that
+    caused rules 92500-92503 and 92600-92602 (now renumbered to
+    100600-100801 across 0840/0880/0890/0955/0960) to collide with
+    stock file 0850-audit_rules.xml earlier the same day.
 -->
 
 <var name="MS_FREQ">8</var>
@@ -269,7 +283,15 @@
     <group>sysmon_event_24,</group>
   </rule>
 
-  <rule id="61653" level="0">
+  <!-- EID 29 dispatch intentionally uses the officially reserved custom-rule
+       range (100000-120000) instead of continuing the 61xxx sequence. Zafer
+       Balkan's Wazuh/Sysmon field mapping (https://zaferbalkan.com/wazuh-sysmon-guidance/)
+       documents 61653 as the slot Wazuh's own numbering convention reserves
+       for EID 25 (sysmon_event_25, ProcessTampering) - a rule this project
+       has not implemented. Using 61653 here would have squatted on that slot
+       and risked a future collision if Wazuh (or this project) ever adds
+       official EID 25 coverage. -->
+  <rule id="100850" level="0">
     <if_sid>61600</if_sid>
     <field name="win.system.eventID">^29$</field>
     <description>Sysmon - Event 29: New executable file detected</description>
