@@ -119,6 +119,61 @@
     Changelog
     ============================================================================
  
+    v1.4 - 2026-07-24
+      - DEPLOYMENT GAP: the v1.3 ClickFix fix below (browser exclusion
+        removal on ClipboardChange) was written and delivered during the
+        2026-07-24 EID coverage expansion session but was never actually
+        applied to this file's live/deployed version - confirmed by
+        direct inspection. This version applies it for the first time.
+        The ClickFix detection chain (0955-sysmon_id_24.xml in the
+        Wazuh ruleset) has not had working telemetry until now.
+      - SUSPECTED FIX (confidence: documentation-based, not field-tested):
+        ProcessTampering's Type condition checked for the literal string
+        "Image replaced". Multiple independent sources (TrustedSec
+        SysmonCommunityGuide, a captured real EID 25 event from
+        ultimatewindowssecurity.com) document the actual Sysmon-generated
+        value as "Image is replaced" - with "is" in the middle. If Sysmon's
+        condition="is" requires an exact match, the original string would
+        never match anything, silently. Corrected to "Image is replaced".
+        UNLIKE the "Signed" field fix in v1.3 (confirmed via a live
+        LABDESK event capture), this one has NOT been confirmed against
+        a real EID 25 event - none has fired on this endpoint to inspect.
+        Validate against a live event (or a controlled Hollowing/
+        Herpaderping test) before treating as fully confirmed.
+      - COVERAGE GAP: ProcessTampering was only filtering for the
+        "Image is replaced" Type (Process Hollowing, T1055.012). The
+        second documented Type value, "Image is locked for access"
+        (Process Herpaderping, T1055.013), was not filtered for at all -
+        meaning Herpaderping tampering, if it occurred, would never have
+        generated telemetry regardless of the Type-string issue above.
+        Added as a second Rule in the same RuleGroup.
+
+    v1.3 - 2026-07-24
+      - FINDING: ClipboardChange (EID 24) excluded chrome.exe, msedge.exe,
+        and firefox.exe from telemetry. This directly conflicts with
+        ClickFix (T1204.004) detection - the technique's clipboard write
+        happens via JavaScript inside the browser process itself. The
+        prior exclusion silenced the exact signal needed to catch it.
+        Browser exclusions removed; Office app exclusion (normal copy/
+        paste noise, unrelated to ClickFix) retained.
+      - EID 24 telemetry alone does not confirm ClickFix - it flags any
+        clipboard write from a browser process. Correlating it with a
+        following EID 1 scripting-interpreter launch was attempted via
+        Wazuh's if_matched_sid + timeframe, then abandoned: that
+        mechanism's frequency attribute has a documented minimum of 2
+        (built for repeated-match/flood detection), and a 2021 Wazuh
+        GitHub issue (#7929) confirms unreliable behavior without it.
+        0955-sysmon_id_24.xml ships the anchor/visibility rule only;
+        cross-referencing the two events is a manual dashboard
+        correlation for now.
+      - Added Wazuh-side behavioral coverage for EID 6 (DriverLoad /
+        BYOVD), EID 9 (RawAccessRead / credential access via raw disk),
+        EID 17-18 (PipeEvent / C2 named pipes), EID 24 (ClipboardChange
+        / ClickFix), and EID 29 (FileExecutableDetected). These EIDs
+        were already collected by this config but had no dedicated
+        Wazuh detection layer. See ruleset files 0840, 0880, 0890, 0955,
+        0960 in native-sysmon-rewrite-by-m0us3r/.
+
     v1.2 - 2026-07-23
       - CRITICAL FIX: "begin with" / "end with" do not support semicolon
         (;) delimited value lists per the official Sysmon schema - only
@@ -622,9 +677,6 @@
 
     <RuleGroup name="ClipboardChange" groupRelation="or">
       <ClipboardChange onmatch="exclude">
-        <Image condition="end with">chrome.exe</Image>
-        <Image condition="end with">msedge.exe</Image>
-        <Image condition="end with">firefox.exe</Image>
         <Image condition="contains any">WINWORD.EXE;EXCEL.EXE;POWERPNT.EXE</Image>
       </ClipboardChange>
     </RuleGroup>
@@ -633,7 +685,11 @@
       <ProcessTampering onmatch="include">
         <Rule name="T1055.012-Hollowing" groupRelation="and">
           <Image condition="end with">.exe</Image>
-          <Type condition="is">Image replaced</Type>
+          <Type condition="is">Image is replaced</Type>
+        </Rule>
+        <Rule name="T1055.013-Herpaderping" groupRelation="and">
+          <Image condition="end with">.exe</Image>
+          <Type condition="is">Image is locked for access</Type>
         </Rule>
       </ProcessTampering>
     </RuleGroup>
