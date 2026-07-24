@@ -1,0 +1,77 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 07/24/2026 Friday
+
+  Sysmon File Executable Detected rules: 100800 - 100810
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 29: FileExecutableDetected - new PE file drop detection
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  CONTEXT:
+    EID 29 fires when a new PE (executable) file is written to disk.
+    sysmon-native.xml already scopes this to Downloads and
+    C:\Users\Public\ with an IMPHASH condition (T1204-New-Executable
+    Rule). This event already fired during this project's own live
+    testing (note_masq3.exe, 2026-07-23) via rule T1204-New-Executable -
+    the telemetry and Sysmon-side filtering are proven to work; this
+    file adds the missing Wazuh-side routing and alerting layer that
+    was absent until now.
+
+  STRUCTURAL FIX (2026-07-24): anchor 100800 was originally level=10,
+  breaking from this project's dominant convention. Lowered to level=0
+  for consistency, even though this EID is already fairly narrow
+  (Downloads/Public + IMPHASH) - the more specific child rule (100801,
+  dropped by a scripting interpreter) carries the real signal.
+
+  MIGRATION NOTES:
+    ANCHOR: if_group>sysmon_event_29, assigned by rule 61653 in
+    0595-win-sysmon_rules.xml (added 2026-07-24 alongside this file -
+    EID 29 previously had no dispatch rule at all, despite already
+    being observed firing in production testing).
+    This is a NEW file - not yet field-tested as a Wazuh rule
+    (the underlying Sysmon telemetry has been field-tested). Validate
+    with wazuh-analysisd -t and a live test before treating as
+    production-confirmed.
+-->
+
+<group name="sysmon,sysmon_eid29,windows,">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR - EID 29 (File Executable Detected)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100800" level="0">
+    <if_group>sysmon_event_29</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Native Sysmon [EID 29]: New executable file detected - $(win.eventdata.targetFilename)</description>
+    <mitre>
+      <id>T1204</id>
+      <id>T1105</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1204 / T1105 - New executable created by a scripting interpreter
+       or downloader (higher-confidence than the anchor alone: the
+       *process that dropped it* is itself suspicious).
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100801" level="13">
+    <if_sid>100800</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\(powershell|cmd|wscript|cscript|mshta|certutil|curl|wget)\.exe$</field>
+    <description>CRITICAL: New executable dropped by $(win.eventdata.image) - $(win.eventdata.targetFilename)</description>
+    <mitre>
+      <id>T1204</id>
+      <id>T1105</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+</group>

@@ -1,0 +1,105 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 07/24/2026 Friday
+
+  Sysmon Clipboard Change rules: 100750 - 100760
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 24: ClipboardChange - ClickFix (T1204.004) detection
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  CONTEXT (2026-07-24):
+    ClickFix (T1204.004) is the most common initial-access technique in
+    2025-2026 public threat reporting - a fake CAPTCHA/error prompt tricks
+    the user into pasting an attacker-controlled clipboard payload into
+    Win+R, the Windows Terminal, or the Explorer address bar (FileFix
+    variant), then pressing Enter. Used by both nation-state APT groups
+    (APT28, Kimsuky, MuddyWater) and ransomware operators (Qilin,
+    Interlock). Not this project's own research - public 2026 reporting.
+
+    REQUIRES sysmon-native.xml v1.3+: the prior config excluded
+    chrome.exe/msedge.exe/firefox.exe from ClipboardChange telemetry,
+    which silenced the exact signal this file depends on (ClickFix's
+    clipboard write happens via JavaScript inside the browser). Confirm
+    that exclusion has been removed before expecting this file to see
+    anything.
+
+  KNOWN LIMITATION - CORRELATION NOT IMPLEMENTED:
+    The real ClickFix signature is "clipboard write, then a scripting
+    interpreter launched shortly after from explorer.exe or conhost.exe."
+    That requires correlating this EID 24 event with a later EID 1 event
+    within a short time window. Wazuh's documented mechanism for this
+    (if_matched_sid + frequency + timeframe) is built for repeated-match
+    /flood detection: the frequency attribute's allowed range is 2-9999
+    (confirmed in official docs), and a 2021 Wazuh GitHub issue (#7929)
+    confirms if_matched_sid without frequency/timeframe has undocumented,
+    unreliable behavior ("fires from the second occurrence onward").
+    There is no confirmed, documented way to express "single event A,
+    then single event B within N seconds" with this mechanism.
+    This file intentionally ships the anchor/visibility rule only. Cross-
+    referencing a clipboard change with a following process launch is
+    left as a manual Discover/dashboard correlation (both events carry
+    the same agent + timestamp) until a verified mechanism is found -
+    do not assume rule 100752 or similar exists elsewhere; it does not.
+
+  STRUCTURAL FIX (2026-07-24): anchor 100750 was originally level=6,
+  breaking from this project's dominant convention. ClipboardChange
+  telemetry is high-volume by nature (any non-Office copy/paste) -
+  especially after removing the browser exclusion in sysmon-native.xml
+  v1.3, which was necessary for ClickFix visibility but widens normal
+  traffic through this anchor considerably. Lowered to level=0; only
+  100751 (browser-sourced clipboard writes) alerts.
+
+  MIGRATION NOTES:
+    ANCHOR: if_group>sysmon_event_24, assigned by rule 61652 in
+    0595-win-sysmon_rules.xml (added 2026-07-24 alongside this file -
+    EID 24 previously had no dispatch rule at all).
+    This is a NEW file - not yet field-tested. Validate with
+    wazuh-analysisd -t and a live test before treating as
+    production-confirmed.
+-->
+
+<group name="sysmon,sysmon_eid24,windows,">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR - EID 24 (Clipboard Change)
+       Fires on any clipboard write not already excluded at the Sysmon
+       config level (Office apps only, per sysmon-native.xml v1.3).
+       Level kept moderate (not critical) since this is a visibility
+       signal, not a confirmed-malicious one on its own - see the
+       KNOWN LIMITATION note above.
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100750" level="0">
+    <if_group>sysmon_event_24</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Native Sysmon [EID 24]: Clipboard content changed by $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1204.004</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1204.004 - Elevated visibility when the source is a browser
+       (the actual ClickFix vector). Still not a confirmation by
+       itself - most browser clipboard writes are the user's own
+       copy/paste. This raises priority for triage, not severity level.
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100751" level="8">
+    <if_sid>100750</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\(chrome|msedge|firefox)\.exe$</field>
+    <description>Clipboard content changed by a browser process - review for ClickFix (T1204.004) if followed by a Run/Terminal paste-execute - $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1204.004</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+</group>

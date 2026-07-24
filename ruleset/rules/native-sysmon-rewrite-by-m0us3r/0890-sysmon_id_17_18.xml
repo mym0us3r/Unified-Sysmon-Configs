@@ -1,0 +1,74 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 07/24/2026 Friday
+
+  Sysmon Pipe Event rules: 100700 - 100715
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 17/18: PipeEvent (Created/Connected) - C2 named pipe detection
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  CONTEXT:
+    Named pipes are Cobalt Strike's default inter-process/lateral-
+    movement mechanism (SMB beacon). sysmon-native.xml already filters
+    EID 17/18 down to only known-bad default pipe name patterns
+    (msagent_, MSSE-, psexec, postex_, status_) - meaning every event
+    that reaches this anchor already matched a suspicious pattern at
+    the endpoint. This file's job is to alert on it, not re-filter it.
+
+  KNOWN LIMITATION:
+    This only catches DEFAULT Cobalt Strike pipe names. Any operator
+    using a custom Malleable C2 profile with a renamed pipe evades this
+    entirely - the pipe name list is not a substitute for behavioral
+    detection elsewhere in this ruleset (e.g. 0870 CreateRemoteThread).
+
+  MIGRATION NOTES:
+    ANCHORS: if_group>sysmon_event_17 (EID 17, pipe created) and
+    if_group>sysmon_event_18 (EID 18, pipe connected), both assigned
+    in 0595-win-sysmon_rules.xml (rules 61645/61646). Two separate
+    anchors are used deliberately - if_group's documented behavior is
+    a single group name per tag, not a comma-separated list like
+    if_sid, so one anchor cannot safely cover both event types.
+    This is a NEW file - not yet field-tested. Validate with
+    wazuh-analysisd -t and a live test before treating as
+    production-confirmed.
+-->
+
+<group name="sysmon,sysmon_eid17_18,windows,">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR - EID 17 (Pipe Created)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100700" level="12">
+    <if_group>sysmon_event_17</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>CRITICAL: Known C2 named pipe created - $(win.eventdata.pipeName) by $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1071.001</id>
+      <id>T1021.002</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR - EID 18 (Pipe Connected)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100701" level="12">
+    <if_group>sysmon_event_18</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>CRITICAL: Connection to known C2 named pipe - $(win.eventdata.pipeName) by $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1071.001</id>
+      <id>T1021.002</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+</group>

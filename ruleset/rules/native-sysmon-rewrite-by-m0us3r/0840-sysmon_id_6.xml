@@ -1,0 +1,114 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 07/24/2026 Friday
+
+  Sysmon Driver Load rules: 100600 - 100610
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 6: Driver Load - BYOVD (Bring Your Own Vulnerable Driver) detection
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  CONTEXT (2026-07-24):
+    BYOVD is the dominant EDR-evasion technique in the 2026 threat
+    landscape - 54 documented "EDR killer" tools abusing 35 signed
+    vulnerable drivers, used by RansomHub, BlackByte, Akira, Scattered
+    Spider, LockBit, and Qilin (source: public 2026 threat reporting,
+    not this project's own research). sysmon-native.xml already
+    collects EID 6 for any non-Microsoft-signed driver; this file adds
+    the Wazuh-side behavioral layer.
+
+  KNOWN LIMITATION - READ BEFORE RELYING ON RULE 100601:
+    The driver name list in 100601 is a small, illustrative starting
+    set of publicly reported vulnerable drivers (RTCore64.sys,
+    gdrv.sys, dbutil_2_3.sys, WinRing0x64.sys, zam64.sys/zamguard64.sys).
+    It is NOT exhaustive and will go stale. The authoritative,
+    actively maintained source for this list is the LOLDrivers project
+    (https://www.loldrivers.io/) - for production use, pull their
+    hash/name list into a Wazuh CDB list and reference it via
+    <list field="win.eventdata.imageLoaded">etc/lists/loldrivers</list>
+    instead of hardcoding names here. Rule 100602 (any non-Microsoft
+    driver load) is the real safety net and does not depend on this list.
+
+  STRUCTURAL FIX (2026-07-24): anchor 100600 was originally level=3,
+  breaking from this project's dominant convention (8 of 9 existing
+  files use anchor level=0; only 92000/EID1 is a deliberate exception).
+  DriverLoad telemetry is not fully pre-filtered at the Sysmon config
+  layer (only Microsoft-signed+Valid is excluded - legitimate third-
+  party drivers like AV/backup software still reach this anchor, as
+  confirmed by a live LABDESK capture of a signed Trend Micro driver).
+  Lowered to level=0; only the more specific child rules (100601-100603)
+  alert.
+
+  MIGRATION NOTES:
+    ANCHOR: if_group>sysmon_event6, assigned by rule 61608 in
+    0595-win-sysmon_rules.xml. No load-order dependency.
+    This is a NEW file - not yet field-tested. Validate with
+    wazuh-analysisd -t and a live driver-load test before treating
+    as production-confirmed, consistent with how every other rule
+    in this project was validated.
+-->
+
+<group name="sysmon,sysmon_eid6,windows,">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR - EID 6 (Driver Load)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100600" level="0">
+    <if_group>sysmon_event6</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Native Sysmon [EID 6]: Driver loaded - $(win.eventdata.imageLoaded)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1547.006 / T1068 - Known vulnerable driver names (BYOVD)
+       See KNOWN LIMITATION note above - illustrative set, not exhaustive.
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100601" level="15">
+    <if_sid>100600</if_sid>
+    <field name="win.eventdata.imageLoaded" type="pcre2">(?i)\\\\(RTCore64|gdrv|dbutil_2_3|WinRing0x64|zam64|zamguard64)\.sys$</field>
+    <description>CRITICAL: Known vulnerable driver loaded (possible BYOVD / EDR-killer) - $(win.eventdata.imageLoaded)</description>
+    <mitre>
+      <id>T1547.006</id>
+      <id>T1068</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1562.001 - Any driver not signed by Microsoft (broad net)
+       Mirrors sysmon-native.xml's own filter: only non-Microsoft-signed
+       drivers ever reach this anchor in the first place.
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100602" level="10">
+    <if_sid>100600</if_sid>
+    <field name="win.eventdata.signature" type="pcre2" negate="yes">(?i)Microsoft</field>
+    <description>Driver loaded with non-Microsoft signature (verify against known-good baseline) - $(win.eventdata.imageLoaded) signed by $(win.eventdata.signature)</description>
+    <mitre>
+      <id>T1562.001</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1036 - Unsigned driver (higher confidence than 100602 alone)
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100603" level="12">
+    <if_sid>100600</if_sid>
+    <field name="win.eventdata.signed">^false$</field>
+    <description>Unsigned kernel driver loaded - $(win.eventdata.imageLoaded)</description>
+    <mitre>
+      <id>T1036</id>
+      <id>T1547.006</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+</group>

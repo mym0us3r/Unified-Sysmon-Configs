@@ -1,0 +1,96 @@
+<!--
+  Reference: Copyright (C) 2015, Wazuh Inc.
+  Rewrite by m0us3r - https://github.com/mym0us3r/Unified-Sysmon-Configs
+  Date: 07/24/2026 Friday
+
+  Sysmon Raw Access Read rules: 100650 - 100660
+  Rewritten for Sysmon Native (Windows 11 24H2+)
+  Provider: Microsoft-Windows-Sysmon
+  EID 9: RawAccessRead - credential access via direct volume/disk read
+  MITRE ATT&CK v15 aligned
+
+  ESCAPING REFERENCE (critical):
+    Wazuh decoder doubles backslashes in Windows paths.
+    Stored internally: C:\\Windows\\System32\\cmd.exe (double backslash)
+    PCRE2 to match \\: use \\\\
+    Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
+
+  CONTEXT:
+    RawAccessRead fires when a process reads a volume/disk using the
+    \\.\ device notation, bypassing normal file-handle locking. This is
+    a well-established technique for extracting SAM/SYSTEM/NTDS.dit
+    while those files are locked by the OS (T1003.002 / T1003.003),
+    often staged via a Volume Shadow Copy (vssadmin.exe, esentutl.exe)
+    to get a readable snapshot first.
+
+  KNOWN LIMITATION:
+    EID 9 only reports the Device field (e.g. \\.\C:), not the specific
+    file being targeted. It cannot by itself confirm SAM/NTDS access -
+    it flags that raw, lock-bypassing disk access happened, which is
+    the correct scope for a detection signal, not a confirmation.
+    Correlate with EID 11 (FileCreate) or EID 1 (ProcessCreate) of the
+    same process for the full picture during investigation.
+
+  STRUCTURAL FIX (2026-07-24): anchor 100650 was originally level=6,
+  breaking from this project's dominant convention (anchor is silent,
+  level=0; only specific child rules alert). RawAccessRead telemetry
+  is only lightly filtered at the Sysmon config layer (svchost.exe
+  excluded) - legitimate backup/imaging software still reaches this
+  anchor regularly. Lowered to level=0.
+
+  MIGRATION NOTES:
+    ANCHOR: if_group>sysmon_event9, assigned by rule 61611 in
+    0595-win-sysmon_rules.xml. No load-order dependency.
+    This is a NEW file - not yet field-tested. Validate with
+    wazuh-analysisd -t and a live test before treating as
+    production-confirmed.
+-->
+
+<group name="sysmon,sysmon_eid9,windows,">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       BASE ANCHOR - EID 9 (Raw Access Read)
+       sysmon-native.xml already excludes svchost.exe at the source,
+       so anything reaching this anchor is already a non-default process
+       performing raw disk access.
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100650" level="0">
+    <if_group>sysmon_event9</if_group>
+    <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
+    <description>Native Sysmon [EID 9]: Raw access read by $(win.eventdata.image) on $(win.eventdata.device)</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1006</id>
+    </mitre>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1003.002 / T1003.003 - VSS-based credential dumping tools
+       vssadmin.exe and esentutl.exe are the classic pairing for
+       "create shadow copy, then raw-read SAM/NTDS.dit from it".
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100651" level="14">
+    <if_sid>100650</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\\\(vssadmin|esentutl|wbadmin)\.exe$</field>
+    <description>CRITICAL: Raw disk access by $(win.eventdata.image) - possible SAM/NTDS credential extraction via Volume Shadow Copy</description>
+    <mitre>
+      <id>T1003.002</id>
+      <id>T1003.003</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       T1006 - Raw access from a non-standard/non-system path
+  ══════════════════════════════════════════════════════════════ -->
+  <rule id="100652" level="10">
+    <if_sid>100650</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)[c-z]:\\\\(Windows\\\\Temp|Users\\\\Public|Users\\\\.+\\\\AppData\\\\Local\\\\Temp)\\\\</field>
+    <description>Raw disk access from a non-standard path - $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1006</id>
+    </mitre>
+    <options>no_full_log</options>
+  </rule>
+
+</group>
