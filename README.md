@@ -173,7 +173,7 @@ Unified-Sysmon-Configs/
 │       ├── wazuh-server-4.14/           # Production-verified rules (live environment)
 │       ├── wazuh-official-repo/         # Alignment with official Wazuh content
 │       └── native-sysmon-rewrite-by-m0us3r/   # ← NEW · Full Native Sysmon rewrite
-│           ├── 0595-win-sysmon_rules.xml        #   52 rules · EID 1-23 group tag definitions + routing
+│           ├── 0595-win-sysmon_rules.xml        #   28 rules · EID 1-23 group tag definitions + routing
 │           ├── 0800-sysmon_id_1.xml             #   83 rules · EID 1 Process Creation
 │           ├── 0810-sysmon_id_3.xml             #   11 rules · EID 3 Network Connection
 │           ├── 0820-sysmon_id_7.xml             #   10 rules · EID 7 Image Load
@@ -183,7 +183,7 @@ Unified-Sysmon-Configs/
 │           ├── 0870-sysmon_id_8.xml             #    5 rules · EID 8 CreateRemoteThread
 │           ├── 0945-sysmon_id_10.xml            #    4 rules · EID 10 Process Access
 │           └── 0950-sysmon_id_20.xml            #    3 rules · EID 20 WMI Consumer
-│                                                #  232 rules total · 8 EIDs covered
+│                                                #  208 rules total · 8 EIDs covered
 │
 ├── adv_simulation/                      # Adversary Simulation · Native vs Legacy
 │   └── native_vs_legacy.md             # Comparative detection validation report
@@ -368,7 +368,7 @@ Real-world preview of **Microsoft-Windows-Sysmon** (Native) event ingestion - te
 
 > **Production-validated · Wazuh 4.14.4 · Windows 11 24H2+ (KB5077241) · MITRE ATT&CK v15 · Zero warnings on `wazuh-analysisd -t`**
 
-![rules](https://img.shields.io/badge/rules-232-brightgreen)
+![rules](https://img.shields.io/badge/rules-208-brightgreen)
 ![EIDs](https://img.shields.io/badge/EIDs-8-blue)
 ![anchor](https://img.shields.io/badge/anchor-if__group-orange)
 ![status](https://img.shields.io/badge/status-production--validated-success)
@@ -413,7 +413,7 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 
 | File | Legacy | Native | Delta | EID | Coverage |
 |---|---|---|---|---|---|
-| `0595-win-sysmon_rules.xml` | 56 | 52 | -4 | 1-23 | EventChannel infrastructure routing + EID 1 process anomaly |
+| `0595-win-sysmon_rules.xml` | 56 | 28 | -28 | 1-23 | EventChannel infrastructure routing (dispatch + runtime group assignment only) |
 | `0800-sysmon_id_1.xml` | 82 | **83** | +1 | 1 | Process Creation - Native anchor + full detection chain |
 | `0810-sysmon_id_3.xml` | 10 | 11 | +1 | 3 | Network Connection |
 | `0820-sysmon_id_7.xml` | 7 | 10 | +3 | 7 | Image Load - vaultcli.dll tiered detection |
@@ -423,9 +423,11 @@ Event arrives (Microsoft-Windows-Sysmon/Operational)
 | `0870-sysmon_id_8.xml` | 4 | 5 | +1 | 8 | CreateRemoteThread |
 | `0945-sysmon_id_10.xml` | 3 | 4 | +1 | 10 | Process Access |
 | `0950-sysmon_id_20.xml` | 2 | 3 | +1 | 20 | WMI Consumer Activity |
-| **GRAND TOTAL** | **241** | **232** | **-9** | **8 EIDs** | |
+| **GRAND TOTAL** | **241** | **208** | **-33** | **8 EIDs** | |
 
-> The delta in `0595` and `0850` reflects removal of **legacy Sysinternals dispatcher rules** (`if_sid>18100` + `sysmon.*` fields) that are architecturally incompatible with the Native pipeline. `0800` shows the rewrite kept essentially the same rule volume as the stock ruleset (82 to 83) while restructuring the chaining model from shared `if_group` siblings to explicit `if_sid>92000` parent-child references (see "Failure 2" above). **Net total is 9 rules lower than Legacy - consolidation and dead-code removal, not coverage loss.**
+> **Duplicate rule removal (2026-07-23):** `0595` originally shipped 24 process-anomaly rules (13 parent + 11 "legitimate parent image" silencer children, IDs `61618-61641`) that were byte-for-byte identical - field by field, description included - to `0850`'s `184666-184777` family. Both chained from the same `if_group>sysmon_event1` anchor, so every matching event fired two identical alerts under two different rule IDs. Confirmed by direct diff, not assumption. `0850` is the dedicated file for this detection family (and a superset - it covers 11 additional binaries the `0595` copy never did), so the 24 duplicates were removed from `0595`, which is now infrastructure-only, matching its filename and original scope.
+
+> The delta in `0595` and `0850` reflects removal of **legacy Sysinternals dispatcher rules** (`if_sid>18100` + `sysmon.*` fields) that are architecturally incompatible with the Native pipeline, plus the duplicate removal noted above for `0595`. `0800` shows the rewrite kept essentially the same rule volume as the stock ruleset (82 to 83) while restructuring the chaining model from shared `if_group` siblings to explicit `if_sid>92000` parent-child references (see "Failure 2" above). **Net total is 33 rules lower than Legacy - consolidation, dead-code removal, and duplicate elimination, not coverage loss.**
 
 ---
 
