@@ -6,7 +6,7 @@
   Sysmon Clipboard Change rules: 100750 - 100760
   Rewritten for Sysmon Native (Windows 11 24H2+)
   Provider: Microsoft-Windows-Sysmon
-  EID 24: ClipboardChange - ClickFix (T1204.004) detection
+  EID 24: ClipboardChange - ClickFix (T1204) detection
   MITRE ATT&CK v15 aligned
 
   ESCAPING REFERENCE (critical):
@@ -16,7 +16,7 @@
     Rule: path separators -> \\\\ | regex meta (\s \d \b \.) -> \\
 
   CONTEXT (2026-07-24):
-    ClickFix (T1204.004) is the most common initial-access technique in
+    ClickFix (T1204) is the most common initial-access technique in
     2025-2026 public threat reporting - a fake CAPTCHA/error prompt tricks
     the user into pasting an attacker-controlled clipboard payload into
     Win+R, the Windows Terminal, or the Explorer address bar (FileFix
@@ -81,13 +81,13 @@
     <field name="win.system.providerName">^Microsoft-Windows-Sysmon$</field>
     <description>Native Sysmon [EID 24]: Clipboard content changed by $(win.eventdata.image)</description>
     <mitre>
-      <id>T1204.004</id>
+      <id>T1204</id>
     </mitre>
     <options>no_full_log</options>
   </rule>
 
   <!-- ══════════════════════════════════════════════════════════════
-       T1204.004 - Elevated visibility when the source is a browser
+       T1204 - Elevated visibility when the source is a browser
        (the actual ClickFix vector). Still not a confirmation by
        itself - most browser clipboard writes are the user's own
        copy/paste. This raises priority for triage, not severity level.
@@ -95,9 +95,9 @@
   <rule id="100751" level="8">
     <if_sid>100750</if_sid>
     <field name="win.eventdata.image" type="pcre2">(?i)\\\\(chrome|msedge|firefox)\.exe$</field>
-    <description>Clipboard content changed by a browser process - review for ClickFix (T1204.004) if followed by a Run/Terminal paste-execute - $(win.eventdata.image)</description>
+    <description>Clipboard content changed by a browser process - review for ClickFix (T1204) if followed by a Run/Terminal paste-execute - $(win.eventdata.image)</description>
     <mitre>
-      <id>T1204.004</id>
+      <id>T1204</id>
     </mitre>
     <options>no_full_log</options>
   </rule>
